@@ -1,0 +1,17 @@
+--- a/src/HalDisplay.cpp
++++ b/src/HalDisplay.cpp
+@@ -320,6 +320,14 @@
+                             SDL_WINDOWPOS_UNDEFINED, winW, winH,
+                             SDL_WINDOW_SHOWN | SDL_WINDOW_ALLOW_HIGHDPI);
+   sdl_renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
++  if (!sdl_renderer) {
++    // The SDL dummy video driver used by offline QA has no accelerated renderer.
++    sdl_renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_SOFTWARE);
++  }
++  if (!sdl_renderer) {
++    std::cerr << "SDL renderer unavailable: " << SDL_GetError() << std::endl;
++    return;
++  }
+ 
+   // Keep all rendering logic in logical (winW×winH) coordinates; SDL maps to
+   // drawable pixels.
