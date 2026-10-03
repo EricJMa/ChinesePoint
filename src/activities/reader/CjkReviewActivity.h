@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "activities/UiListActivity.h"
+#include "chinesepoint/cjk/CjkReviewPresentation.h"
 #include "chinesepoint/cjk/CjkReviewScheduler.h"
 #include "chinesepoint/cjk/CjkStudyClock.h"
 
@@ -36,6 +37,11 @@ class CjkReviewActivity final : public UiListActivity {
   std::string answer;
   std::string status;
   ChinesePoint::Cjk::StudyClock clock{};
+#if defined(CHINESEPOINT_REVIEW_REVEAL_FIRST) && CHINESEPOINT_REVIEW_REVEAL_FIRST
+  ChinesePoint::Cjk::ReviewPresentation presentation{true};
+#else
+  ChinesePoint::Cjk::ReviewPresentation presentation{false};
+#endif
   std::vector<std::string> labels;
   std::vector<freeink::ui::ListItem> rowItems;
 };

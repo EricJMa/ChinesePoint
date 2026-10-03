@@ -1,0 +1,3 @@
+add_executable(CjkReviewPresentationTest CjkReviewPresentationTest.cpp)
+target_link_libraries(CjkReviewPresentationTest PRIVATE crosspoint_test_common GTest::gtest_main)
+gtest_discover_tests(CjkReviewPresentationTest)

@@ -17,6 +17,7 @@ namespace fui = freeink::ui;
 
 namespace {
 constexpr int kCardRows = 3;
+constexpr int kAnswerRow = kCardRows - 1;
 constexpr int kAgainRow = kCardRows;
 constexpr int kHardRow = kAgainRow + 1;
 constexpr int kGoodRow = kHardRow + 1;
@@ -41,6 +42,7 @@ void CjkReviewActivity::onExit() {
 }
 
 bool CjkReviewActivity::loadNextDueCard() {
+  presentation.resetForCard();
   dataAvailable = false;
   hasDueCard = false;
   wordId = 0;
@@ -77,6 +79,7 @@ bool CjkReviewActivity::loadNextDueCard() {
   }
   ChinesePoint::CjkSafetyGuard::finishLearnerSession();
   rebuildRows();
+  if (hasDueCard && !presentation.answerVisible()) moveSelectionTo(kAnswerRow);
   return hasDueCard;
 }
 
@@ -91,11 +94,15 @@ void CjkReviewActivity::rebuildRows() {
     labels.reserve(kEasyRow + 1);
     labels.emplace_back(headword);
     labels.emplace_back(std::string(tr(STR_LEARNER_CONTEXT)) + ": " + sourceSentence);
-    labels.emplace_back(std::string(tr(STR_LEARNER_ANSWER)) + ": " + answer);
-    labels.emplace_back(tr(STR_LEARNER_AGAIN));
-    labels.emplace_back(tr(STR_LEARNER_HARD));
-    labels.emplace_back(tr(STR_LEARNER_GOOD));
-    labels.emplace_back(tr(STR_LEARNER_EASY));
+    if (presentation.answerVisible()) {
+      labels.emplace_back(std::string(tr(STR_LEARNER_ANSWER)) + ": " + answer);
+      labels.emplace_back(tr(STR_LEARNER_AGAIN));
+      labels.emplace_back(tr(STR_LEARNER_HARD));
+      labels.emplace_back(tr(STR_LEARNER_GOOD));
+      labels.emplace_back(tr(STR_LEARNER_EASY));
+    } else {
+      labels.emplace_back(tr(STR_LEARNER_SHOW_ANSWER));
+    }
   }
   rowItems.reserve(labels.size());
   for (size_t index = 0; index < labels.size(); ++index) {
@@ -114,10 +121,10 @@ void CjkReviewActivity::rebuildRows() {
 }
 
 void CjkReviewActivity::rate(const ChinesePoint::Cjk::Rating rating) {
-  if (!hasDueCard || !ChinesePoint::CjkSafetyGuard::startLearnerSession()) return;
+  if (!hasDueCard || !presentation.canRate() || !ChinesePoint::CjkSafetyGuard::startLearnerSession()) return;
   const auto reading = clock.observe(static_cast<int64_t>(millis()));
-  const bool rated = ChinesePoint::Cjk::learnerStore().rateLocalReview(wordId, headword, rating, reading.nowMs,
-                                                                         reading.state);
+  const bool rated =
+      ChinesePoint::Cjk::learnerStore().rateLocalReview(wordId, headword, rating, reading.nowMs, reading.state);
   ChinesePoint::CjkSafetyGuard::finishLearnerSession();
   if (!rated) {
     status = tr(STR_LEARNER_REVIEW_FAILED);
@@ -132,6 +139,16 @@ void CjkReviewActivity::rate(const ChinesePoint::Cjk::Rating rating) {
 
 void CjkReviewActivity::activateIndex(const int index) {
   if (!hasDueCard) return;
+  if (!presentation.answerVisible()) {
+    if (index == kAnswerRow && presentation.reveal()) {
+      {
+        RenderLock lock(*this);
+        rebuildRows();
+      }
+      moveSelectionTo(kAnswerRow);
+    }
+    return;
+  }
   switch (index) {
     case kAgainRow:
       rate(ChinesePoint::Cjk::Rating::Again);
