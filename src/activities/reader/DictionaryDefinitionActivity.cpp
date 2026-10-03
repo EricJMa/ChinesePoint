@@ -72,6 +72,13 @@ void DictionaryDefinitionActivity::captureLearnerAnswer() {
 
 #endif
 
+void DictionaryDefinitionActivity::onExit() {
+  Activity::onExit();
+  if (auto* fcm = renderer.getFontCacheManager()) {
+    fcm->releaseSdFontCaches();
+  }
+}
+
 DictionaryDefinitionActivity::BodyArea DictionaryDefinitionActivity::bodyArea() const {
   const auto& metrics = UITheme::getInstance().getMetrics();
   const auto orientation = renderer.getOrientation();

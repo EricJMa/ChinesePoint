@@ -85,6 +85,7 @@ class DictionaryWordSelectActivity final : public Activity {
   const std::string dictionaryFolder;
   int selected = 0;
   uint16_t rowCount = 0;
+  unsigned long lastHorizontalMoveTime = 0;
 
   Dictionary dict;
   bool dictOpenAttempted = false;

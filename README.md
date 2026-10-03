@@ -69,6 +69,8 @@ used on a locked or irreplaceable reader.
 
 The initial source base is CrossPoint develop commit e7a3bb48817f1cb951b521ca958562723159c2f6. ChinesePoint currently pins FreeInk `7f6bd0f47a766eea18206dd19f723f3707b6c9d3`, which contains the upstream X4 Pro display-driver correction.
 
+The `feature/crosspoint-1.6.5` integration branch merges CrossPoint `1.6.5` and therefore pins FreeInk `111fdcc7f0176c3ee38391a160ee296bf492dbd8`, which contains `7f6bd0f`. That newer FreeInk is the display-risk update the upstream watch holds pending physical X4 Pro panel and recovery coverage; host tests and simulator builds do not lift that hold.
+
 The unmodified X4 Pro baseline compiled on 2026-08-30 and produced a valid ESP32-S3 application image. It is not yet a ChinesePoint CJK release.
 
 The current local X4 Pro diagnostic build has an ESP32-S3 image header, the
