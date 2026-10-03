@@ -20,7 +20,7 @@ uint16_t utf8CodepointCount(const std::string_view text) {
     if ((ch & 0xC0u) != 0x80u) ++count;
   }
   return count > std::numeric_limits<uint16_t>::max() ? std::numeric_limits<uint16_t>::max()
-                                                        : static_cast<uint16_t>(count);
+                                                      : static_cast<uint16_t>(count);
 }
 
 uint32_t selectionFingerprint(const std::string_view text) {
@@ -38,9 +38,21 @@ bool isSentenceTerminal(const std::string_view token) {
   if (last == '.' || last == '!' || last == '?') return true;
   constexpr std::string_view terminals[] = {"。", "！", "？"};
   for (const auto terminal : terminals) {
-    if (token.size() >= terminal.size() && token.compare(token.size() - terminal.size(), terminal.size(), terminal) == 0) {
+    if (token.size() >= terminal.size() &&
+        token.compare(token.size() - terminal.size(), terminal.size(), terminal) == 0) {
       return true;
     }
+  }
+  return false;
+}
+
+bool continuesSentence(const std::string_view token) {
+  if (token.empty()) return false;
+  const char last = token.back();
+  if (last == ',' || last == ';' || last == ':') return true;
+  constexpr std::string_view marks[] = {"，", "、", "；", "："};
+  for (const auto mark : marks) {
+    if (token.size() >= mark.size() && token.compare(token.size() - mark.size(), mark.size(), mark) == 0) return true;
   }
   return false;
 }
@@ -56,21 +68,25 @@ bool buildSentenceSelection(const SelectableToken* tokens, const size_t tokenCou
     return false;
   }
 
+  const auto blockBreakBefore = [tokens](const size_t index) {
+    return tokens[index].startsBlock && !continuesSentence(tokens[index - 1].text);
+  };
+
   size_t first = selectedTokenIndex;
   bool completeStart = false;
   while (first > 0) {
-    if (isSentenceTerminal(tokens[first - 1].text)) {
+    if (isSentenceTerminal(tokens[first - 1].text) || blockBreakBefore(first)) {
       completeStart = true;
       break;
     }
     --first;
   }
-  if (first == 0) completeStart = startsAtSectionBoundary;
+  if (first == 0) completeStart = startsAtSectionBoundary || tokens[0].startsBlock;
 
   size_t last = selectedTokenIndex;
   bool completeEnd = false;
   for (; last < tokenCount; ++last) {
-    if (isSentenceTerminal(tokens[last].text)) {
+    if (isSentenceTerminal(tokens[last].text) || (last + 1 < tokenCount && blockBreakBefore(last + 1))) {
       completeEnd = true;
       break;
     }
@@ -89,8 +105,9 @@ bool buildSentenceSelection(const SelectableToken* tokens, const size_t tokenCou
     const bool addSpace = emitted && !token.joinWithoutSpaceBefore;
     if (index == selectedTokenIndex) selectedCodepoint = requiredCodepoints + (addSpace ? 1u : 0u);
     requiredBytes += token.text.size() + (addSpace ? 1u : 0u);
-    requiredCodepoints += (token.visibleCodepointLength > 0 ? token.visibleCodepointLength : utf8CodepointCount(token.text)) +
-                          (addSpace ? 1u : 0u);
+    requiredCodepoints +=
+        (token.visibleCodepointLength > 0 ? token.visibleCodepointLength : utf8CodepointCount(token.text)) +
+        (addSpace ? 1u : 0u);
     emitted = emitted || !token.text.empty();
   }
   if (requiredBytes > outputCapacity || selectedCodepoint > std::numeric_limits<uint16_t>::max()) return false;
@@ -109,9 +126,10 @@ bool buildSentenceSelection(const SelectableToken* tokens, const size_t tokenCou
   output[position] = '\0';
 
   const auto& selected = tokens[selectedTokenIndex];
-  selection.anchor = {spineIndex, selected.visibleCodepointOffset,
-                      selected.visibleCodepointLength > 0 ? selected.visibleCodepointLength : utf8CodepointCount(selected.text),
-                      selectionFingerprint(selected.text)};
+  selection.anchor = {
+      spineIndex, selected.visibleCodepointOffset,
+      selected.visibleCodepointLength > 0 ? selected.visibleCodepointLength : utf8CodepointCount(selected.text),
+      selectionFingerprint(selected.text)};
   selection.firstTokenIndex = static_cast<uint16_t>(first);
   selection.lastTokenIndex = static_cast<uint16_t>(last);
   selection.selectedSentenceCodepoint = static_cast<uint16_t>(selectedCodepoint);

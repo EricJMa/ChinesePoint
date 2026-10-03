@@ -90,6 +90,12 @@ if (parsedSize != fileSize) {
 
 ## `section.bin`
 
+### Version 49
+
+Each PageLine adds a `bool blockStart` after `yPos`: true for the first line of
+a paragraph, heading or table cell. Word selection uses it to keep a saved
+sentence inside its own block. Sections from earlier versions are rebuilt.
+
 ### Version 48
 
 Version 48 keeps the version 47 serialized layout unchanged. It was bumped
@@ -291,6 +297,7 @@ struct ImageBlock {
 struct PageLine {
     s16 xPos;
     s16 yPos;
+    bool blockStart;
     TextBlock block;
 };
 

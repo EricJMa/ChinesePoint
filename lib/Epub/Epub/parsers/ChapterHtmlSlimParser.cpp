@@ -694,7 +694,7 @@ void ChapterHtmlSlimParser::finishTableRow() {
 
       // Reset Y so every cell in this slice shares one baseline.
       currentPageNextY = rowY;
-      addLineToPage(std::move(line), lineVisibleOffset);
+      addLineToPage(std::move(line), lineVisibleOffset, lineIndex == 0);
     }
     currentPageNextY = static_cast<int16_t>(rowY + rowLineHeight);
   }
@@ -1790,7 +1790,7 @@ void XMLCALL ChapterHtmlSlimParser::characterData(void* userData, const XML_Char
     self->currentTextBlock->layoutAndExtractLines(
         self->renderer, self->fontId, effectiveWidth,
         [self](std::unique_ptr<TextBlock> textBlock, const uint32_t offset) {
-          self->addLineToPage(std::move(textBlock), offset);
+          self->addLineToPage(std::move(textBlock), offset, !self->currentTextBlock->hasEmittedLine());
         },
         false, self->characterSpacing, self->wordSpacingPercent);
   }
@@ -2202,7 +2202,8 @@ bool ChapterHtmlSlimParser::parseAndBuildPages() {
   return finishParse();
 }
 
-void ChapterHtmlSlimParser::addLineToPage(std::unique_ptr<TextBlock> line, const uint32_t visibleOffset) {
+void ChapterHtmlSlimParser::addLineToPage(std::unique_ptr<TextBlock> line, const uint32_t visibleOffset,
+                                          const bool startsBlock) {
   const int lineHeight =
       renderer.getLineHeight(fontId, lineCompression) + line->getRubyShift(renderer.getFontAscenderSize(fontId));
 
@@ -2242,7 +2243,7 @@ void ChapterHtmlSlimParser::addLineToPage(std::unique_ptr<TextBlock> line, const
       LOG_DBG("EHP", "Dropped page link: %.48s", link.href);
     }
   }
-  auto pageLine = makeUniqueNoThrow<PageLine>(std::move(line), xOffset, currentPageNextY);
+  auto pageLine = makeUniqueNoThrow<PageLine>(std::move(line), xOffset, currentPageNextY, startsBlock);
   if (!pageLine) {
     LOG_ERR("EHP", "OOM: PageLine");
     return;
@@ -2289,7 +2290,7 @@ void ChapterHtmlSlimParser::makePages() {
   currentTextBlock->layoutAndExtractLines(
       renderer, fontId, effectiveWidth,
       [this](std::unique_ptr<TextBlock> textBlock, const uint32_t offset) {
-        addLineToPage(std::move(textBlock), offset);
+        addLineToPage(std::move(textBlock), offset, !currentTextBlock->hasEmittedLine());
       },
       true, characterSpacing, wordSpacingPercent);
 

@@ -37,9 +37,7 @@ bool isSelectableToken(const char* text) {
   return false;
 }
 
-bool beginsNonAscii(const char* text) {
-  return text != nullptr && static_cast<uint8_t>(*text) >= 0x80;
-}
+bool beginsNonAscii(const char* text) { return text != nullptr && static_cast<uint8_t>(*text) >= 0x80; }
 
 void indexBuildYield(void*) { vTaskDelay(1); }
 
@@ -90,6 +88,9 @@ void DictionaryWordSelectActivity::extractWords() {
     if (!block || !block->valid()) continue;
 
     bool rowHasWords = false;
+#if defined(CHINESEPOINT)
+    bool lineStartsBlock = line->startsBlock();
+#endif
     const int ascender = renderer.getFontAscenderSize(fontId);
     const int rubyShift = block->getRubyShift(ascender);
     for (uint16_t i = 0; i < block->wordCount(); i++) {
@@ -108,7 +109,9 @@ void DictionaryWordSelectActivity::extractWords() {
 #endif
       words.push_back(box);
 #if defined(CHINESEPOINT)
-      learnerTokens.push_back({text, 0, ChinesePoint::Cjk::utf8CodepointCount(text), joinWithoutSpaceBefore});
+      learnerTokens.push_back(
+          {text, 0, ChinesePoint::Cjk::utf8CodepointCount(text), joinWithoutSpaceBefore, lineStartsBlock});
+      lineStartsBlock = false;
 #endif
       rowHasWords = true;
 
@@ -178,22 +181,22 @@ void DictionaryWordSelectActivity::performLookup() {
   ChinesePoint::Cjk::SentenceSelection sentenceSelection;
   if (selected >= 0 && selected < static_cast<int>(learnerTokens.size()) &&
       ChinesePoint::Cjk::buildSentenceSelection(learnerTokens.data(), learnerTokens.size(),
-                                                static_cast<size_t>(selected), spineIndex,
-                                                startsAtSectionBoundary, endsAtSectionBoundary,
-                                                learnerSentence.data(), learnerSentence.size(), sentenceSelection)) {
+                                                static_cast<size_t>(selected), spineIndex, startsAtSectionBoundary,
+                                                endsAtSectionBoundary, learnerSentence.data(), learnerSentence.size(),
+                                                sentenceSelection)) {
     learnerContext = {{learnerSentence.data()}, bookPath, sentenceSelection.anchor};
   }
 #endif
 
   if (dictionaryFolder.empty()) {
-    startActivityForResult(
-        std::make_unique<DictionaryDefinitionActivity>(renderer, mappedInput, words[selected].text,
-                                                       tr(STR_DICT_NO_DICT_SET), false
+    startActivityForResult(std::make_unique<DictionaryDefinitionActivity>(renderer, mappedInput, words[selected].text,
+                                                                          tr(STR_DICT_NO_DICT_SET), false
 #if defined(CHINESEPOINT)
-                                                       , std::move(learnerContext)
+                                                                          ,
+                                                                          std::move(learnerContext)
 #endif
-                                                       ),
-        [this](const ActivityResult&) { requestUpdate(); });
+                                                                              ),
+                           [this](const ActivityResult&) { requestUpdate(); });
     return;
   }
 
@@ -246,7 +249,8 @@ void DictionaryWordSelectActivity::performLookup() {
         std::make_unique<DictionaryDefinitionActivity>(renderer, mappedInput, std::move(headword),
                                                        std::move(definition), dict.definitionsAreHtml()
 #if defined(CHINESEPOINT)
-                                                       , std::move(learnerContext), true
+                                                                                  ,
+                                                       std::move(learnerContext), true
 #endif
                                                        ),
         [this](const ActivityResult&) { requestUpdate(); });
@@ -262,8 +266,7 @@ void DictionaryWordSelectActivity::performLookup() {
     popup = Popup::None;
     startActivityForResult(
         std::make_unique<DictionaryDefinitionActivity>(renderer, mappedInput, words[selected].text,
-                                                       tr(STR_DICT_NOT_FOUND), false,
-                                                       std::move(learnerContext)),
+                                                       tr(STR_DICT_NOT_FOUND), false, std::move(learnerContext)),
         [this](const ActivityResult&) { requestUpdate(); });
     return;
   }

@@ -285,6 +285,63 @@ TEST(TextSpacingLayout, CachedPageRestoresSpacing) {
   std::filesystem::remove(path);
 }
 
+TEST_F(ChapterHtmlSlimParserTest, OnlyTheFirstLineOfEachParagraphStartsABlock) {
+  parser.viewportWidth = 40;  // two 16 px words per line
+  parser.beginParse();
+  ChapterHtmlSlimParser::startElement(&parser, "p", nullptr);
+  ChapterHtmlSlimParser::characterData(&parser, "ab cd ef gh ij", 14);
+  ChapterHtmlSlimParser::endElement(&parser, "p");
+  ChapterHtmlSlimParser::startElement(&parser, "p", nullptr);
+  ChapterHtmlSlimParser::characterData(&parser, "kl", 2);
+  ChapterHtmlSlimParser::endElement(&parser, "p");
+  parser.makePages();
+  ASSERT_NE(parser.currentPage, nullptr);
+  std::vector<bool> starts;
+  for (const auto& element : parser.currentPage->elements) {
+    if (element->getTag() == TAG_PageLine) starts.push_back(static_cast<const PageLine&>(*element).startsBlock());
+  }
+  EXPECT_EQ(starts, (std::vector<bool>{true, false, false, true}));
+}
+
+TEST(TextSpacingLayout, SoftFlushedParagraphStartsBlockOnlyOnce) {
+  GfxRenderer renderer;
+  BlockStyle style;
+  style.alignment = CssTextAlign::Left;
+  style.textIndentDefined = true;
+  ParsedText text(false, false, false, style);
+  for (const char* word : {"ab", "cd", "ef", "gh", "ij"}) text.addWord(word, EpdFontFamily::REGULAR);
+  std::vector<bool> starts;
+  const auto collect = [&](std::unique_ptr<TextBlock>, auto) { starts.push_back(!text.hasEmittedLine()); };
+  text.layoutAndExtractLines(renderer, 0, 40, collect, false);  // soft flush keeps the last line
+  text.layoutAndExtractLines(renderer, 0, 40, collect, true);
+  EXPECT_EQ(starts, (std::vector<bool>{true, false, false}));
+}
+
+TEST(TextSpacingLayout, CachedPageRestoresBlockStart) {
+  const auto path = (std::filesystem::temp_directory_path() / "crosspoint-block-start.bin").string();
+  for (const bool blockStart : {true, false}) {
+    Page page;
+    page.elements.push_back(std::make_unique<PageLine>(
+        std::make_unique<TextBlock>(std::vector<std::string>{"ab"}, std::vector<int16_t>{0},
+                                    std::vector<EpdFontFamily::Style>{EpdFontFamily::REGULAR}, std::vector<uint8_t>{},
+                                    std::vector<uint16_t>{}),
+        4, 12, blockStart));
+    {
+      HalFile file;
+      ASSERT_TRUE(file.open(path.c_str(), "wb"));
+      ASSERT_TRUE(page.serialize(file));
+    }
+    HalFile file;
+    ASSERT_TRUE(file.open(path.c_str(), "rb"));
+    auto cachedPage = Page::deserialize(file);
+    ASSERT_NE(cachedPage, nullptr);
+    ASSERT_EQ(cachedPage->elements.size(), 1);
+    EXPECT_EQ(static_cast<const PageLine&>(*cachedPage->elements[0]).startsBlock(), blockStart);
+    EXPECT_EQ(file.position(), file.size());
+  }
+  std::filesystem::remove(path);
+}
+
 TEST_F(ChapterHtmlSlimParserTest, ParserAppliesTextSpacingToParagraphs) {
   parser.setTextSpacing(-1, 150);
   parser.beginParse();

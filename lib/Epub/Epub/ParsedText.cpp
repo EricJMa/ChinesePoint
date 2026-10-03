@@ -1736,6 +1736,7 @@ void ParsedText::extractLine(const size_t breakIndex, const int pageWidth, const
       return;
     }
     processLine(std::move(block), lineVisibleOffset);
+    emittedLine = true;
     return;
   }
 
@@ -1761,4 +1762,5 @@ void ParsedText::extractLine(const size_t breakIndex, const int pageWidth, const
     return;
   }
   processLine(std::move(block), lineVisibleOffset);
+  emittedLine = true;
 }

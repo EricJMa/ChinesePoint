@@ -34,11 +34,14 @@ class PageElement {
 // a line from a block element
 class PageLine final : public PageElement {
   std::unique_ptr<TextBlock> block;
+  // First line of its paragraph, heading or table cell.
+  bool blockStart;
 
  public:
-  PageLine(std::unique_ptr<TextBlock> block, const int16_t xPos, const int16_t yPos)
-      : PageElement(xPos, yPos), block(std::move(block)) {}
+  PageLine(std::unique_ptr<TextBlock> block, const int16_t xPos, const int16_t yPos, const bool blockStart = false)
+      : PageElement(xPos, yPos), block(std::move(block)), blockStart(blockStart) {}
   const TextBlock* getBlock() const { return block.get(); }
+  bool startsBlock() const { return blockStart; }
   void render(GfxRenderer& renderer, int fontId, int xOffset, int yOffset) override;
   bool serialize(HalFile& file) override;
   PageElementTag getTag() const override { return TAG_PageLine; }
