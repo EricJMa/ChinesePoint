@@ -111,7 +111,7 @@ jobs:
           git -C "$rebuild_dir" submodule update --init --recursive
           (
             cd "$rebuild_dir"
-            pio run -e chinesepoint_x4pro -j1 | tee qa-artifacts/pio-second.log
+            pio run -e chinesepoint_x4pro -j1 | tee "$GITHUB_WORKSPACE/qa-artifacts/pio-second.log"
           )
           for artifact in firmware.bin update.bin; do
             first="qa-artifacts/${artifact}.first"
