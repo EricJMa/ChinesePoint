@@ -12,7 +12,10 @@ namespace ChinesePoint::Cjk {
 // add dynamic allocation pressure to that path.
 constexpr size_t kMaxLookupCandidateBytes = 64;
 constexpr uint16_t kMaxLookupCandidateCodepoints = 8;
-constexpr size_t kMaxLookupCandidates = 12;
+// For a single selected Hanzi there are n windows of length n containing it.
+// Keep every window of length 2..8: a cap of 12 retained long misses while
+// silently discarding common two-Hanzi words in real, longer reading runs.
+constexpr size_t kMaxLookupCandidates = kMaxLookupCandidateCodepoints * (kMaxLookupCandidateCodepoints + 1) / 2 - 1;
 
 struct LookupCandidate {
   char text[kMaxLookupCandidateBytes + 1] = {};
