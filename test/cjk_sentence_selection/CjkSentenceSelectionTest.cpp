@@ -95,6 +95,21 @@ TEST(CjkSentenceSelection, ParagraphStartEndsAnUnterminatedSentence) {
   EXPECT_EQ(selection.completeness, SentenceCompleteness::Complete);
 }
 
+TEST(CjkSentenceSelection, LabelEndingInColonStaysOutOfTheNextBlock) {
+  const std::array<SelectableToken, 5> tokens = {{{"例句", 0, 2, false, true},
+                                                  {"：", 2, 1, true, false},
+                                                  {"床前", 3, 2, true, true},
+                                                  {"明月光", 5, 3, true, false},
+                                                  {"。", 8, 1, true, false}}};
+  std::array<char, 64> sentence{};
+  SentenceSelection selection;
+
+  ASSERT_TRUE(ChinesePoint::Cjk::buildSentenceSelection(tokens.data(), tokens.size(), 3, 0, true, true, sentence.data(),
+                                                        sentence.size(), selection));
+  EXPECT_STREQ(sentence.data(), "床前明月光。");
+  EXPECT_EQ(selection.completeness, SentenceCompleteness::Complete);
+}
+
 TEST(CjkSentenceSelection, PageStartingMidParagraphStaysTruncated) {
   const std::array<SelectableToken, 2> tokens = {{{"接上页", 0, 3, false, false}, {"的句子。", 3, 4, true, false}}};
   std::array<char, 64> sentence{};

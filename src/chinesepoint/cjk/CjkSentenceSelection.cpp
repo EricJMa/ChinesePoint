@@ -49,8 +49,8 @@ bool isSentenceTerminal(const std::string_view token) {
 bool continuesSentence(const std::string_view token) {
   if (token.empty()) return false;
   const char last = token.back();
-  if (last == ',' || last == ';' || last == ':') return true;
-  constexpr std::string_view marks[] = {"，", "、", "；", "："};
+  if (last == ',' || last == ';') return true;
+  constexpr std::string_view marks[] = {"，", "、", "；"};
   for (const auto mark : marks) {
     if (token.size() >= mark.size() && token.compare(token.size() - mark.size(), mark.size(), mark) == 0) return true;
   }

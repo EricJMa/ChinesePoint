@@ -34,6 +34,7 @@ struct SentenceSelection {
 
 bool isSentenceTerminal(std::string_view token);
 // Clause punctuation (e.g. "，" ending a verse line) that carries a sentence into the next block.
+// Colons are excluded: a block ending in "：" is usually a heading or label introducing the next.
 bool continuesSentence(std::string_view token);
 uint16_t utf8CodepointCount(std::string_view text);
 uint32_t selectionFingerprint(std::string_view text);
