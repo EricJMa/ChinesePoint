@@ -36,6 +36,18 @@ TEST(CjkStudyClock, InvalidPersistedStateIsFailClosedToZero) {
   EXPECT_EQ(invalid.observe(50).nowMs, 50);
 }
 
+// Characterizes the activity's current clock usage, not a scheduler guarantee.
+// Constructing again at entry discards all uptime since the previous visit.
+TEST(CjkStudyClock, RecreatingAtReviewEntryDiscardsTimeSpentReading) {
+  StudyClock first({}, 1'000);
+  const auto savedAtRating = first.observe(2'000);
+  constexpr int64_t kDayMs = 86'400'000;
+  StudyClock reentered(savedAtRating.state, 2'000 + kDayMs);
+  const auto atReentry = reentered.observe(2'000 + kDayMs);
+  EXPECT_EQ(atReentry.nowMs, 1'000);
+  EXPECT_LT(atReentry.nowMs, savedAtRating.nowMs + kDayMs);
+}
+
 TEST(CjkStudyClock, StateValidationRejectsNegativeAndInconsistentValues) {
   EXPECT_FALSE(ChinesePoint::Cjk::validStudyClockState({-1, 0}));
   EXPECT_FALSE(ChinesePoint::Cjk::validStudyClockState({10, 11}));
