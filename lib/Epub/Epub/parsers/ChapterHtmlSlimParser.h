@@ -103,6 +103,7 @@ class ChapterHtmlSlimParser {
   std::vector<std::unique_ptr<ParsedText>> tableRowCells;
   std::array<std::vector<std::unique_ptr<TextBlock>>, MAX_GRID_TABLE_COLUMNS> tableCellLines;
   std::vector<uint32_t> tableLineVisibleOffsets;
+  std::array<std::vector<uint32_t>, MAX_GRID_TABLE_COLUMNS> tableCellLineOffsets;
   bool listItemBulletOnly = false;  // true when currentTextBlock has only the <li> bullet
 
   // Tracks the innermost open <ul>/<ol> so <li> knows whether to number itself,
@@ -235,7 +236,9 @@ class ChapterHtmlSlimParser {
   bool finishParse();  // flush the trailing page and tear down; returns true
   void abortParse();   // tear down without flushing (error / abandon)
 
-  void addLineToPage(std::unique_ptr<TextBlock> line, uint32_t visibleOffset, bool startsBlock);
+  // pageVisibleOffset opens a new page; lineVisibleOffset is this line's own first-word offset.
+  void addLineToPage(std::unique_ptr<TextBlock> line, uint32_t pageVisibleOffset, bool startsBlock,
+                     uint32_t lineVisibleOffset);
   const std::vector<std::pair<std::string, uint16_t>>& getAnchors() const { return anchorData; }
 
   // Byte progress of the in-flight parse, used to estimate a still-building section's total page

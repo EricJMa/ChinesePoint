@@ -90,6 +90,15 @@ if (parsedSize != fileSize) {
 
 ## `section.bin`
 
+### Version 50
+
+Each PageLine adds a `u32 visibleOffset` after `blockStart`: the visible-text
+offset (zero-based Unicode codepoints in `<body>`, as in the page LUT) of the
+line's first word. Table cells carry their own offset, not the row's. Word
+selection estimates a word's position from it; see
+`docs/chinesepoint/learner-source-anchor.md`. Sections from earlier versions
+are rebuilt.
+
 ### Version 49
 
 Each PageLine adds a `bool blockStart` after `yPos`: true for the first line of
@@ -298,6 +307,7 @@ struct PageLine {
     s16 xPos;
     s16 yPos;
     bool blockStart;
+    u32 visibleOffset;
     TextBlock block;
 };
 

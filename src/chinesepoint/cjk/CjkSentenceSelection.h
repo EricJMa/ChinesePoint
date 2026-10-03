@@ -33,6 +33,11 @@ struct SentenceSelection {
 };
 
 bool isSentenceTerminal(std::string_view token);
+// Estimated visible-text offset of the word after `word`, which starts at
+// `wordOffset`: words are assumed contiguous, separated by one space unless
+// `nextJoinsWithoutSpace`. Exact for single-spaced source text; collapsed
+// whitespace, synthetic list markers and RTL lines make it approximate.
+uint32_t followingWordOffset(uint32_t wordOffset, std::string_view word, bool nextJoinsWithoutSpace);
 // Clause punctuation (e.g. "，" ending a verse line) that carries a sentence into the next block.
 // Colons are excluded: a block ending in "：" is usually a heading or label introducing the next.
 bool continuesSentence(std::string_view token);

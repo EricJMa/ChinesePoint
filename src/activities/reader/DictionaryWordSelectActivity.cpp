@@ -90,11 +90,20 @@ void DictionaryWordSelectActivity::extractWords() {
     bool rowHasWords = false;
 #if defined(CHINESEPOINT)
     bool lineStartsBlock = line->startsBlock();
+    uint32_t wordOffset = line->visibleTextOffset();
 #endif
     const int ascender = renderer.getFontAscenderSize(fontId);
     const int rubyShift = block->getRubyShift(ascender);
     for (uint16_t i = 0; i < block->wordCount(); i++) {
       const char* text = block->wordText(i);
+#if defined(CHINESEPOINT)
+      // Every word, selectable or not, advances the estimate from the line's exact start.
+      if (i > 0) {
+        const char* previous = block->wordText(i - 1);
+        wordOffset = ChinesePoint::Cjk::followingWordOffset(wordOffset, previous,
+                                                            beginsNonAscii(previous) && beginsNonAscii(text));
+      }
+#endif
       if (!isSelectableToken(text)) continue;
 
       WordBox box;
@@ -110,7 +119,7 @@ void DictionaryWordSelectActivity::extractWords() {
       words.push_back(box);
 #if defined(CHINESEPOINT)
       learnerTokens.push_back(
-          {text, 0, ChinesePoint::Cjk::utf8CodepointCount(text), joinWithoutSpaceBefore, lineStartsBlock});
+          {text, wordOffset, ChinesePoint::Cjk::utf8CodepointCount(text), joinWithoutSpaceBefore, lineStartsBlock});
       lineStartsBlock = false;
 #endif
       rowHasWords = true;

@@ -46,6 +46,10 @@ bool isSentenceTerminal(const std::string_view token) {
   return false;
 }
 
+uint32_t followingWordOffset(const uint32_t wordOffset, const std::string_view word, const bool nextJoinsWithoutSpace) {
+  return wordOffset + utf8CodepointCount(word) + (nextJoinsWithoutSpace ? 0u : 1u);
+}
+
 bool continuesSentence(const std::string_view token) {
   if (token.empty()) return false;
   const char last = token.back();

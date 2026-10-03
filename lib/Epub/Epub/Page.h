@@ -36,12 +36,17 @@ class PageLine final : public PageElement {
   std::unique_ptr<TextBlock> block;
   // First line of its paragraph, heading or table cell.
   bool blockStart;
+  // Visible-text offset of the line's first word: zero-based codepoints in the
+  // section's <body>, independent of font and layout.
+  uint32_t visibleOffset;
 
  public:
-  PageLine(std::unique_ptr<TextBlock> block, const int16_t xPos, const int16_t yPos, const bool blockStart = false)
-      : PageElement(xPos, yPos), block(std::move(block)), blockStart(blockStart) {}
+  PageLine(std::unique_ptr<TextBlock> block, const int16_t xPos, const int16_t yPos, const bool blockStart = false,
+           const uint32_t visibleOffset = 0)
+      : PageElement(xPos, yPos), block(std::move(block)), blockStart(blockStart), visibleOffset(visibleOffset) {}
   const TextBlock* getBlock() const { return block.get(); }
   bool startsBlock() const { return blockStart; }
+  uint32_t visibleTextOffset() const { return visibleOffset; }
   void render(GfxRenderer& renderer, int fontId, int xOffset, int yOffset) override;
   bool serialize(HalFile& file) override;
   PageElementTag getTag() const override { return TAG_PageLine; }

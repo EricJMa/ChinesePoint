@@ -603,6 +603,9 @@ void ChapterHtmlSlimParser::finishTableRow() {
   for (auto& lines : tableCellLines) {
     lines.clear();
   }
+  for (auto& offsets : tableCellLineOffsets) {
+    offsets.clear();
+  }
   tableLineVisibleOffsets.clear();
   if (tableLineVisibleOffsets.capacity() < MAX_GRID_TABLE_CELL_WORDS * 2) {
     tableLineVisibleOffsets.reserve(MAX_GRID_TABLE_CELL_WORDS * 2);
@@ -612,15 +615,20 @@ void ChapterHtmlSlimParser::finishTableRow() {
 
   for (size_t column = 0; column < columnCount; ++column) {
     auto& lines = tableCellLines[column];
+    auto& lineOffsets = tableCellLineOffsets[column];
     // Two wrapped lines per buffered word avoids normal vector growth (max 64).
     if (lines.capacity() < MAX_GRID_TABLE_CELL_WORDS * 2) {
       lines.reserve(MAX_GRID_TABLE_CELL_WORDS * 2);
     }
+    if (lineOffsets.capacity() < MAX_GRID_TABLE_CELL_WORDS * 2) {
+      lineOffsets.reserve(MAX_GRID_TABLE_CELL_WORDS * 2);
+    }
     tableRowCells[column]->layoutAndExtractLines(
         renderer, fontId, textWidth,
-        [this, &lines](std::unique_ptr<TextBlock> line, const uint32_t offset) {
+        [this, &lines, &lineOffsets](std::unique_ptr<TextBlock> line, const uint32_t offset) {
           const size_t lineIndex = lines.size();
           lines.push_back(std::move(line));
+          lineOffsets.push_back(offset);
           if (tableLineVisibleOffsets.size() <= lineIndex) {
             tableLineVisibleOffsets.resize(lineIndex + 1, UINT32_MAX);
           }
@@ -638,6 +646,9 @@ void ChapterHtmlSlimParser::finishTableRow() {
   const auto clearLayoutLines = [this]() {
     for (auto& lines : tableCellLines) {
       lines.clear();
+    }
+    for (auto& offsets : tableCellLineOffsets) {
+      offsets.clear();
     }
     tableLineVisibleOffsets.clear();
   };
@@ -694,7 +705,7 @@ void ChapterHtmlSlimParser::finishTableRow() {
 
       // Reset Y so every cell in this slice shares one baseline.
       currentPageNextY = rowY;
-      addLineToPage(std::move(line), lineVisibleOffset, lineIndex == 0);
+      addLineToPage(std::move(line), lineVisibleOffset, lineIndex == 0, tableCellLineOffsets[column][lineIndex]);
     }
     currentPageNextY = static_cast<int16_t>(rowY + rowLineHeight);
   }
@@ -1790,7 +1801,7 @@ void XMLCALL ChapterHtmlSlimParser::characterData(void* userData, const XML_Char
     self->currentTextBlock->layoutAndExtractLines(
         self->renderer, self->fontId, effectiveWidth,
         [self](std::unique_ptr<TextBlock> textBlock, const uint32_t offset) {
-          self->addLineToPage(std::move(textBlock), offset, !self->currentTextBlock->hasEmittedLine());
+          self->addLineToPage(std::move(textBlock), offset, !self->currentTextBlock->hasEmittedLine(), offset);
         },
         false, self->characterSpacing, self->wordSpacingPercent);
   }
@@ -2063,6 +2074,9 @@ bool ChapterHtmlSlimParser::beginParse() {
   for (auto& lines : tableCellLines) {
     lines.clear();
   }
+  for (auto& offsets : tableCellLineOffsets) {
+    offsets.clear();
+  }
   tableLineVisibleOffsets.clear();
 
   auto paragraphAlignmentBlockStyle = BlockStyle();
@@ -2202,8 +2216,8 @@ bool ChapterHtmlSlimParser::parseAndBuildPages() {
   return finishParse();
 }
 
-void ChapterHtmlSlimParser::addLineToPage(std::unique_ptr<TextBlock> line, const uint32_t visibleOffset,
-                                          const bool startsBlock) {
+void ChapterHtmlSlimParser::addLineToPage(std::unique_ptr<TextBlock> line, const uint32_t pageVisibleOffset,
+                                          const bool startsBlock, const uint32_t lineVisibleOffset) {
   const int lineHeight =
       renderer.getLineHeight(fontId, lineCompression) + line->getRubyShift(renderer.getFontAscenderSize(fontId));
 
@@ -2214,14 +2228,14 @@ void ChapterHtmlSlimParser::addLineToPage(std::unique_ptr<TextBlock> line, const
   }
 
   if (currentPageNextY + lineHeight > viewportHeight) {
-    setCurrentPageVisibleOffset(visibleOffset);
+    setCurrentPageVisibleOffset(pageVisibleOffset);
     completePageFn(std::move(currentPage), xpathParagraphIndex, xpathListItemIndex, currentPageVisibleOffset);
     completedPageCount++;
     currentPage.reset(new Page());
     currentPageNextY = 0;
     currentPageVisibleOffsetSet = false;
   }
-  setCurrentPageVisibleOffset(visibleOffset);
+  setCurrentPageVisibleOffset(pageVisibleOffset);
 
   // Track cumulative words to assign footnotes to the page containing their anchor
   wordsExtractedInBlock += line->wordCount();
@@ -2243,7 +2257,8 @@ void ChapterHtmlSlimParser::addLineToPage(std::unique_ptr<TextBlock> line, const
       LOG_DBG("EHP", "Dropped page link: %.48s", link.href);
     }
   }
-  auto pageLine = makeUniqueNoThrow<PageLine>(std::move(line), xOffset, currentPageNextY, startsBlock);
+  auto pageLine =
+      makeUniqueNoThrow<PageLine>(std::move(line), xOffset, currentPageNextY, startsBlock, lineVisibleOffset);
   if (!pageLine) {
     LOG_ERR("EHP", "OOM: PageLine");
     return;
@@ -2290,7 +2305,7 @@ void ChapterHtmlSlimParser::makePages() {
   currentTextBlock->layoutAndExtractLines(
       renderer, fontId, effectiveWidth,
       [this](std::unique_ptr<TextBlock> textBlock, const uint32_t offset) {
-        addLineToPage(std::move(textBlock), offset, !currentTextBlock->hasEmittedLine());
+        addLineToPage(std::move(textBlock), offset, !currentTextBlock->hasEmittedLine(), offset);
       },
       true, characterSpacing, wordSpacingPercent);
 
