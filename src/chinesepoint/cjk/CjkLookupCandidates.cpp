@@ -88,19 +88,32 @@ bool appendToken(const std::string_view text, char* const destination, size_t& b
   return true;
 }
 
-void insertCandidate(const LookupCandidate& candidate, LookupCandidate* const output, const size_t capacity,
-                     size_t& count) {
+// 0: starts at the tapped token, 1: contains it, 2: the tapped token alone.
+uint8_t rankOf(const size_t first, const size_t last, const size_t selected) {
+  if (first == selected && last == selected) return 2;
+  return first == selected ? 0 : 1;
+}
+
+void insertCandidate(const LookupCandidate& candidate, const uint8_t rank, LookupCandidate* const output,
+                     uint8_t* const ranks, const size_t capacity, size_t& count) {
   for (size_t index = 0; index < count; ++index) {
     if (output[index].bytes == candidate.bytes && memcmp(output[index].text, candidate.text, candidate.bytes) == 0) {
       return;
     }
   }
+  const auto before = [&](const size_t index) {
+    return ranks[index] > rank || (ranks[index] == rank && output[index].codepoints < candidate.codepoints);
+  };
   size_t insertAt = count;
-  while (insertAt > 0 && output[insertAt - 1].codepoints < candidate.codepoints) --insertAt;
+  while (insertAt > 0 && before(insertAt - 1)) --insertAt;
   if (count < capacity) ++count;
   if (insertAt >= count) return;
-  for (size_t index = count - 1; index > insertAt; --index) output[index] = output[index - 1];
+  for (size_t index = count - 1; index > insertAt; --index) {
+    output[index] = output[index - 1];
+    ranks[index] = ranks[index - 1];
+  }
   output[insertAt] = candidate;
+  ranks[insertAt] = rank;
 }
 
 }  // namespace
@@ -132,13 +145,11 @@ size_t buildCjkLookupCandidates(const SelectableToken* const tokens, const size_
     ++runEnd;
   }
 
-  // The caller already looked up the token as displayed; its bare core is
-  // only a new query when punctuation was attached.
-  const bool selectedIsBare = selected.text.size() == tokens[selectedTokenIndex].text.size();
+  uint8_t ranks[kMaxLookupCandidates] = {};
+  const size_t capacity = outputCapacity < kMaxLookupCandidates ? outputCapacity : kMaxLookupCandidates;
   size_t count = 0;
   for (size_t first = runStart; first <= selectedTokenIndex; ++first) {
     for (size_t last = selectedTokenIndex; last <= runEnd; ++last) {
-      if (first == selectedTokenIndex && last == selectedTokenIndex && selectedIsBare) continue;
       LookupCandidate candidate;
       bool valid = true;
       for (size_t index = first; index <= last; ++index) {
@@ -149,7 +160,7 @@ size_t buildCjkLookupCandidates(const SelectableToken* const tokens, const size_
       }
       if (!valid) continue;
       candidate.text[candidate.bytes] = '\0';
-      insertCandidate(candidate, output, outputCapacity, count);
+      insertCandidate(candidate, rankOf(first, last, selectedTokenIndex), output, ranks, capacity, count);
     }
   }
   return count;

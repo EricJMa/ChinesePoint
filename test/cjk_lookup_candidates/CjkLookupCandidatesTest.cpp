@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <cstring>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -32,7 +33,7 @@ TEST(CjkLookupCandidates, KeepsShortDictionaryWordsInALongRenderedCjkRun) {
   EXPECT_TRUE(found);
 }
 
-TEST(CjkLookupCandidates, TriesLongestContiguousPhraseBeforeShorterPhrases) {
+TEST(CjkLookupCandidates, PrefersPhrasesStartingAtTheTapThenContainingItThenTheTokenAlone) {
   const std::array<SelectableToken, 5> tokens = {
       {{"他", 0, 1, false}, {"喜欢", 1, 2, true}, {"读书", 3, 2, true}, {"。", 5, 1, true}, {"然后", 6, 2, false}}};
   std::array<LookupCandidate, 12> candidates{};
@@ -40,10 +41,11 @@ TEST(CjkLookupCandidates, TriesLongestContiguousPhraseBeforeShorterPhrases) {
   const size_t count = ChinesePoint::Cjk::buildCjkLookupCandidates(tokens.data(), tokens.size(), 1, candidates.data(),
                                                                    candidates.size());
 
-  ASSERT_EQ(count, 3u);
-  EXPECT_STREQ(candidates[0].text, "他喜欢读书");
-  EXPECT_STREQ(candidates[1].text, "喜欢读书");
+  ASSERT_EQ(count, 4u);
+  EXPECT_STREQ(candidates[0].text, "喜欢读书");
+  EXPECT_STREQ(candidates[1].text, "他喜欢读书");
   EXPECT_STREQ(candidates[2].text, "他喜欢");
+  EXPECT_STREQ(candidates[3].text, "喜欢");
 }
 
 TEST(CjkLookupCandidates, NeverJoinsAcrossPunctuationOrLatinText) {
@@ -54,8 +56,9 @@ TEST(CjkLookupCandidates, NeverJoinsAcrossPunctuationOrLatinText) {
   const size_t count = ChinesePoint::Cjk::buildCjkLookupCandidates(tokens.data(), tokens.size(), 0, candidates.data(),
                                                                    candidates.size());
 
-  ASSERT_EQ(count, 1u);
+  ASSERT_EQ(count, 2u);
   EXPECT_STREQ(candidates[0].text, "我爱");
+  EXPECT_STREQ(candidates[1].text, "我");
 }
 
 TEST(CjkLookupCandidates, RejectsMalformedAndOversizeCjkTokens) {
@@ -72,7 +75,7 @@ TEST(CjkLookupCandidates, RejectsMalformedAndOversizeCjkTokens) {
             0u);
 }
 
-TEST(CjkLookupCandidates, BoundsTheResultWithoutDiscardingTheLongestPhrase) {
+TEST(CjkLookupCandidates, BoundsTheResultWithoutDiscardingTheBestCandidate) {
   const std::array<SelectableToken, 3> tokens = {{{"他", 0, 1, false}, {"喜欢", 1, 2, true}, {"读书", 3, 2, true}}};
   std::array<LookupCandidate, 1> candidate{};
 
@@ -80,7 +83,7 @@ TEST(CjkLookupCandidates, BoundsTheResultWithoutDiscardingTheLongestPhrase) {
       ChinesePoint::Cjk::buildCjkLookupCandidates(tokens.data(), tokens.size(), 1, candidate.data(), candidate.size());
 
   ASSERT_EQ(count, 1u);
-  EXPECT_STREQ(candidate[0].text, "他喜欢读书");
+  EXPECT_STREQ(candidate[0].text, "喜欢读书");
 }
 
 std::vector<std::string> candidateTexts(const SelectableToken* tokens, size_t count, size_t selected) {
@@ -98,11 +101,11 @@ TEST(CjkLookupCandidates, TrailingPunctuationDoesNotHideTheWordBeforeIt) {
     const std::array<SelectableToken, 5> tokens = {
         {{"举", 0, 1, false}, {"头", 1, 1, true}, {"望", 2, 1, true}, {"明", 3, 1, true}, {ending, 4, 2, true}}};
     SCOPED_TRACE(ending);
-    // Tapping 明: 明月 is reachable; the run still includes the start of the line.
+    // Tapping 明: 明月 starts there and comes first; the run still reaches the line start.
     const auto fromMing = candidateTexts(tokens.data(), tokens.size(), 3);
-    EXPECT_NE(std::find(fromMing.begin(), fromMing.end(), "明月"), fromMing.end());
-    EXPECT_EQ(fromMing.front(), "举头望明月");
-    // Tapping the punctuated token: the bare 月 and 明月 are both tried, longest first.
+    EXPECT_EQ(fromMing.front(), "明月");
+    EXPECT_NE(std::find(fromMing.begin(), fromMing.end(), "举头望明月"), fromMing.end());
+    // Tapping the punctuated token: phrases containing it, then the bare 月 last.
     const auto fromYue = candidateTexts(tokens.data(), tokens.size(), 4);
     EXPECT_NE(std::find(fromYue.begin(), fromYue.end(), "明月"), fromYue.end());
     EXPECT_EQ(fromYue.back(), "月");
@@ -111,7 +114,7 @@ TEST(CjkLookupCandidates, TrailingPunctuationDoesNotHideTheWordBeforeIt) {
 
 TEST(CjkLookupCandidates, LeadingPunctuationStartsThePhrase) {
   const std::array<SelectableToken, 3> tokens = {{{"说：", 0, 2, false}, {"“明", 2, 2, true}, {"月", 4, 1, true}}};
-  EXPECT_EQ(candidateTexts(tokens.data(), tokens.size(), 2), (std::vector<std::string>{"明月"}));
+  EXPECT_EQ(candidateTexts(tokens.data(), tokens.size(), 2), (std::vector<std::string>{"明月", "月"}));
   EXPECT_EQ(candidateTexts(tokens.data(), tokens.size(), 1), (std::vector<std::string>{"明月", "明"}));
 }
 
@@ -119,7 +122,7 @@ TEST(CjkLookupCandidates, PhrasesStopAtAttachedPunctuation) {
   // 床前明月光，疑是地上霜。 tokenised with punctuation attached.
   const std::array<SelectableToken, 4> tokens = {
       {{"月", 0, 1, false}, {"光，", 1, 2, true}, {"疑", 3, 1, true}, {"是", 4, 1, true}}};
-  EXPECT_EQ(candidateTexts(tokens.data(), tokens.size(), 2), (std::vector<std::string>{"疑是"}));
+  EXPECT_EQ(candidateTexts(tokens.data(), tokens.size(), 2), (std::vector<std::string>{"疑是", "疑"}));
   EXPECT_EQ(candidateTexts(tokens.data(), tokens.size(), 1), (std::vector<std::string>{"月光", "光"}));
 }
 
@@ -127,8 +130,37 @@ TEST(CjkLookupCandidates, PhrasesNeverSpanTwoParagraphs) {
   // <p>…明</p><p>月，…</p>: the paragraph ends with 明 and the next starts with 月，
   const std::array<SelectableToken, 4> tokens = {
       {{"望", 0, 1, false, true}, {"明", 1, 1, true, false}, {"月，", 2, 2, true, true}, {"光", 4, 1, true, false}}};
-  EXPECT_EQ(candidateTexts(tokens.data(), tokens.size(), 1), (std::vector<std::string>{"望明"}));
+  EXPECT_EQ(candidateTexts(tokens.data(), tokens.size(), 1), (std::vector<std::string>{"望明", "明"}));
   EXPECT_EQ(candidateTexts(tokens.data(), tokens.size(), 2), (std::vector<std::string>{"月"}));
+}
+
+// The first candidate a dictionary contains, as DictionaryWordSelectActivity resolves a tap.
+std::string resolve(const SelectableToken* tokens, size_t count, size_t selected, const std::set<std::string>& dict) {
+  for (const auto& text : candidateTexts(tokens, count, selected)) {
+    if (dict.count(text)) return text;
+  }
+  return "";
+}
+
+TEST(CjkLookupCandidates, ATapResolvesToTheWordEvenWhenItsHanziAreEntries) {
+  // 他忽然有点害怕， with a full dictionary: every single Hanzi is an entry too.
+  const std::set<std::string> dict = {"他", "忽", "然", "有", "点", "害", "怕", "忽然", "有点", "害怕"};
+  const std::array<SelectableToken, 7> tokens = {{{"他", 0, 1, false},
+                                                  {"忽", 1, 1, true},
+                                                  {"然", 2, 1, true},
+                                                  {"有", 3, 1, true},
+                                                  {"点", 4, 1, true},
+                                                  {"害", 5, 1, true},
+                                                  {"怕，", 6, 2, true}}};
+  EXPECT_EQ(resolve(tokens.data(), tokens.size(), 5, dict), "害怕");  // 害 starts the word
+  EXPECT_EQ(resolve(tokens.data(), tokens.size(), 6, dict), "害怕");  // 怕， ends it
+  EXPECT_EQ(resolve(tokens.data(), tokens.size(), 1, dict), "忽然");
+  EXPECT_EQ(resolve(tokens.data(), tokens.size(), 2, dict), "忽然");
+  EXPECT_EQ(resolve(tokens.data(), tokens.size(), 0, dict), "他");  // no longer word: the Hanzi itself
+  // A word starting at the tap wins over a longer one merely containing it,
+  // and a containing word wins over the bare Hanzi.
+  EXPECT_EQ(resolve(tokens.data(), tokens.size(), 4, std::set<std::string>{"有点害怕", "点害", "点"}), "点害");
+  EXPECT_EQ(resolve(tokens.data(), tokens.size(), 4, std::set<std::string>{"有点害怕", "点"}), "有点害怕");
 }
 
 TEST(CjkLookupCandidates, PunctuationOnlyTokensHaveNoCandidates) {

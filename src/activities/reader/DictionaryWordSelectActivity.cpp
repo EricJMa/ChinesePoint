@@ -231,25 +231,26 @@ void DictionaryWordSelectActivity::performLookup() {
   std::string definition;
   std::string headword;
   Dictionary::LookupResult result = Dictionary::LookupResult::NotFound;
-  const bool found = ok && dict.lookup(words[selected].text, definition, headword, &result);
 
-  // EPUBs often expose a Chinese expression as neighbouring one-Hanzi tokens.
-  // Preserve the normal token lookup first, then probe bounded, longest-first
-  // local CJK phrases. This is an offline fallback only: the configured
+  // EPUBs expose Chinese text as one-Hanzi tokens, and a full dictionary has
+  // an entry for almost every single Hanzi. Looking up the tapped token first
+  // would therefore hide the word it belongs to (害 instead of 害怕). For a CJK
+  // token, try the bounded local phrases in word-preference order, ending with
+  // the bare token; other tokens keep the normal lookup. The configured
   // StarDict remains the authority and its precise failures are never hidden.
 #if defined(CHINESEPOINT)
-  bool cjkFound = found;
-  if (!cjkFound && ok && result == Dictionary::LookupResult::NotFound) {
-    const size_t candidateCount = ChinesePoint::Cjk::buildCjkLookupCandidates(
-        learnerTokens.data(), learnerTokens.size(), static_cast<size_t>(selected), lookupCandidates.data(),
-        lookupCandidates.size());
-    for (size_t index = 0; index < candidateCount; ++index) {
-      cjkFound = dict.lookup(lookupCandidates[index].text, definition, headword, &result);
-      if (cjkFound || result != Dictionary::LookupResult::NotFound) break;
-    }
+  const size_t candidateCount = ok ? ChinesePoint::Cjk::buildCjkLookupCandidates(
+                                         learnerTokens.data(), learnerTokens.size(), static_cast<size_t>(selected),
+                                         lookupCandidates.data(), lookupCandidates.size())
+                                   : 0;
+  bool cjkFound = false;
+  for (size_t index = 0; index < candidateCount; ++index) {
+    cjkFound = dict.lookup(lookupCandidates[index].text, definition, headword, &result);
+    if (cjkFound || result != Dictionary::LookupResult::NotFound) break;
   }
+  if (candidateCount == 0) cjkFound = ok && dict.lookup(words[selected].text, definition, headword, &result);
 #else
-  const bool cjkFound = found;
+  const bool cjkFound = ok && dict.lookup(words[selected].text, definition, headword, &result);
 #endif
 
   if (cjkFound) {
