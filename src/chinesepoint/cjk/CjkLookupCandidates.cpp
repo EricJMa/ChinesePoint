@@ -96,10 +96,18 @@ uint8_t rankOf(const size_t first, const size_t last, const size_t selected) {
 
 void insertCandidate(const LookupCandidate& candidate, const uint8_t rank, LookupCandidate* const output,
                      uint8_t* const ranks, const size_t capacity, size_t& count) {
+  // The same text can arise from different windows (哈 哈 哈): keep its best rank.
   for (size_t index = 0; index < count; ++index) {
-    if (output[index].bytes == candidate.bytes && memcmp(output[index].text, candidate.text, candidate.bytes) == 0) {
-      return;
+    if (output[index].bytes != candidate.bytes || memcmp(output[index].text, candidate.text, candidate.bytes) != 0) {
+      continue;
     }
+    if (ranks[index] <= rank) return;
+    for (size_t later = index; later + 1 < count; ++later) {
+      output[later] = output[later + 1];
+      ranks[later] = ranks[later + 1];
+    }
+    --count;
+    break;
   }
   const auto before = [&](const size_t index) {
     return ranks[index] > rank || (ranks[index] == rank && output[index].codepoints < candidate.codepoints);

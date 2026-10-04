@@ -163,6 +163,14 @@ TEST(CjkLookupCandidates, ATapResolvesToTheWordEvenWhenItsHanziAreEntries) {
   EXPECT_EQ(resolve(tokens.data(), tokens.size(), 4, std::set<std::string>{"有点害怕", "点"}), "有点害怕");
 }
 
+TEST(CjkLookupCandidates, RepeatedTextKeepsItsBestRank) {
+  // Tapping the middle 哈 of 哈哈哈: 哈哈 starts at the tap, although the same
+  // text also arises earlier as a window merely containing it.
+  const std::array<SelectableToken, 3> tokens = {{{"哈", 0, 1, false}, {"哈", 1, 1, true}, {"哈", 2, 1, true}}};
+  EXPECT_EQ(candidateTexts(tokens.data(), tokens.size(), 1), (std::vector<std::string>{"哈哈", "哈哈哈", "哈"}));
+  EXPECT_EQ(resolve(tokens.data(), tokens.size(), 1, std::set<std::string>{"哈", "哈哈", "哈哈哈"}), "哈哈");
+}
+
 TEST(CjkLookupCandidates, PunctuationOnlyTokensHaveNoCandidates) {
   const std::array<SelectableToken, 2> tokens = {{{"月", 0, 1, false}, {"。”", 1, 2, true}}};
   EXPECT_TRUE(candidateTexts(tokens.data(), tokens.size(), 1).empty());
