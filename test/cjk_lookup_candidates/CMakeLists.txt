@@ -1,6 +1,7 @@
 add_executable(CjkLookupCandidatesTest
   CjkLookupCandidatesTest.cpp
   ${REPO_ROOT}/src/chinesepoint/cjk/CjkLookupCandidates.cpp
+  ${REPO_ROOT}/src/chinesepoint/cjk/CjkSentenceSelection.cpp
 )
 
 target_include_directories(CjkLookupCandidatesTest PRIVATE

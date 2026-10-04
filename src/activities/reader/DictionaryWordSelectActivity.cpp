@@ -273,8 +273,11 @@ void DictionaryWordSelectActivity::performLookup() {
   // not treat SD, decompression, or allocation failures as a harmless miss.
   if (ok && result == Dictionary::LookupResult::NotFound && learnerContext.has_value()) {
     popup = Popup::None;
+    uint16_t leading = 0;
+    std::string bareWord{ChinesePoint::Cjk::trimEdgePunctuation(words[selected].text, leading)};
+    if (bareWord.empty()) bareWord = words[selected].text;
     startActivityForResult(
-        std::make_unique<DictionaryDefinitionActivity>(renderer, mappedInput, words[selected].text,
+        std::make_unique<DictionaryDefinitionActivity>(renderer, mappedInput, std::move(bareWord),
                                                        tr(STR_DICT_NOT_FOUND), false, std::move(learnerContext)),
         [this](const ActivityResult&) { requestUpdate(); });
     return;

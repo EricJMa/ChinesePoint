@@ -56,6 +56,26 @@ bool isCjkToken(const std::string_view text, uint16_t& codepoints) {
   return codepoints > 0;
 }
 
+// A token's dictionary text: its CJK core, with any attached edge punctuation
+// reported so a phrase never extends across it.
+struct TokenCore {
+  std::string_view text;
+  bool cjk = false;
+  bool punctuationBefore = false;
+  bool punctuationAfter = false;
+};
+
+TokenCore coreOf(const std::string_view token) {
+  TokenCore core;
+  uint16_t leading = 0;
+  core.text = trimEdgePunctuation(token, leading);
+  uint16_t ignored = 0;
+  core.cjk = isCjkToken(core.text, ignored);
+  core.punctuationBefore = leading > 0;
+  core.punctuationAfter = core.text.data() + core.text.size() != token.data() + token.size();
+  return core;
+}
+
 bool appendToken(const std::string_view text, char* const destination, size_t& bytes, uint16_t& codepoints) {
   uint16_t tokenCodepoints = 0;
   if (!isCjkToken(text, tokenCodepoints) || bytes + text.size() > kMaxLookupCandidateBytes ||
@@ -71,8 +91,7 @@ bool appendToken(const std::string_view text, char* const destination, size_t& b
 void insertCandidate(const LookupCandidate& candidate, LookupCandidate* const output, const size_t capacity,
                      size_t& count) {
   for (size_t index = 0; index < count; ++index) {
-    if (output[index].bytes == candidate.bytes &&
-        memcmp(output[index].text, candidate.text, candidate.bytes) == 0) {
+    if (output[index].bytes == candidate.bytes && memcmp(output[index].text, candidate.text, candidate.bytes) == 0) {
       return;
     }
   }
@@ -94,30 +113,34 @@ size_t buildCjkLookupCandidates(const SelectableToken* const tokens, const size_
     return 0;
   }
 
-  uint16_t selectedCodepoints = 0;
-  if (!isCjkToken(tokens[selectedTokenIndex].text, selectedCodepoints)) return 0;
+  const TokenCore selected = coreOf(tokens[selectedTokenIndex].text);
+  if (!selected.cjk) return 0;
 
+  // Punctuation bounds the run: it may sit at the run's outer edges only.
   size_t runStart = selectedTokenIndex;
-  while (runStart > 0) {
-    uint16_t ignored = 0;
-    if (!isCjkToken(tokens[runStart - 1].text, ignored)) break;
+  while (runStart > 0 && !coreOf(tokens[runStart].text).punctuationBefore) {
+    const TokenCore previous = coreOf(tokens[runStart - 1].text);
+    if (!previous.cjk || previous.punctuationAfter) break;
     --runStart;
   }
   size_t runEnd = selectedTokenIndex;
-  while (runEnd + 1 < tokenCount) {
-    uint16_t ignored = 0;
-    if (!isCjkToken(tokens[runEnd + 1].text, ignored)) break;
+  while (runEnd + 1 < tokenCount && !coreOf(tokens[runEnd].text).punctuationAfter) {
+    const TokenCore next = coreOf(tokens[runEnd + 1].text);
+    if (!next.cjk || next.punctuationBefore) break;
     ++runEnd;
   }
 
+  // The caller already looked up the token as displayed; its bare core is
+  // only a new query when punctuation was attached.
+  const bool selectedIsBare = selected.text.size() == tokens[selectedTokenIndex].text.size();
   size_t count = 0;
   for (size_t first = runStart; first <= selectedTokenIndex; ++first) {
     for (size_t last = selectedTokenIndex; last <= runEnd; ++last) {
-      if (first == selectedTokenIndex && last == selectedTokenIndex) continue;
+      if (first == selectedTokenIndex && last == selectedTokenIndex && selectedIsBare) continue;
       LookupCandidate candidate;
       bool valid = true;
       for (size_t index = first; index <= last; ++index) {
-        if (!appendToken(tokens[index].text, candidate.text, candidate.bytes, candidate.codepoints)) {
+        if (!appendToken(coreOf(tokens[index].text).text, candidate.text, candidate.bytes, candidate.codepoints)) {
           valid = false;
           break;
         }

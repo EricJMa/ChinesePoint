@@ -24,9 +24,11 @@ struct LookupCandidate {
 };
 
 // Builds distinct, longest-first contiguous CJK phrases around the selected
-// token. The selected token itself is intentionally excluded because the
-// caller always tries the normal StarDict lookup first. A malformed UTF-8
-// token, punctuation, Latin text, or an overlong phrase is never emitted.
+// token. Punctuation attached to a token's edge ("月，") is dropped from the
+// query and ends the phrase there. The selected token alone is emitted only
+// when that trimming changed it, because the caller always tries the normal
+// StarDict lookup of the displayed token first. Malformed UTF-8, Latin text
+// or an overlong phrase is never emitted.
 size_t buildCjkLookupCandidates(const SelectableToken* tokens, size_t tokenCount, size_t selectedTokenIndex,
                                 LookupCandidate* output, size_t outputCapacity);
 

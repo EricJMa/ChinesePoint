@@ -23,6 +23,57 @@ uint16_t utf8CodepointCount(const std::string_view text) {
                                                       : static_cast<uint16_t>(count);
 }
 
+namespace {
+
+// Length of the UTF-8 sequence starting with `lead`; 0 for a continuation byte.
+size_t sequenceLength(const unsigned char lead) {
+  if (lead < 0x80u) return 1;
+  if ((lead & 0xE0u) == 0xC0u) return 2;
+  if ((lead & 0xF0u) == 0xE0u) return 3;
+  if ((lead & 0xF8u) == 0xF0u) return 4;
+  return 0;
+}
+
+uint32_t decodeAt(const std::string_view text, const size_t offset, const size_t length) {
+  const auto lead = static_cast<unsigned char>(text[offset]);
+  if (length == 1) return lead;
+  uint32_t value = lead & (0x7Fu >> length);
+  for (size_t index = 1; index < length; ++index)
+    value = (value << 6u) | (static_cast<unsigned char>(text[offset + index]) & 0x3Fu);
+  return value;
+}
+
+// ASCII punctuation, General Punctuation (quotes, dashes, ellipsis), CJK
+// Symbols and Punctuation (。、「」《》【】) and fullwidth ，！？：；（）.
+bool isEdgePunctuation(const uint32_t cp) {
+  if (cp < 0x80u)
+    return (cp >= 0x21u && cp <= 0x2Fu) || (cp >= 0x3Au && cp <= 0x40u) || (cp >= 0x5Bu && cp <= 0x60u) ||
+           (cp >= 0x7Bu && cp <= 0x7Eu);
+  return (cp >= 0x2010u && cp <= 0x205Eu) || (cp >= 0x3001u && cp <= 0x3003u) || (cp >= 0x3008u && cp <= 0x3011u) ||
+         (cp >= 0x3014u && cp <= 0x301Fu) || (cp >= 0xFF01u && cp <= 0xFF0Fu) || (cp >= 0xFF1Au && cp <= 0xFF20u) ||
+         (cp >= 0xFF3Bu && cp <= 0xFF40u) || (cp >= 0xFF5Bu && cp <= 0xFF65u);
+}
+
+}  // namespace
+
+std::string_view trimEdgePunctuation(std::string_view text, uint16_t& leadingCodepoints) {
+  leadingCodepoints = 0;
+  while (!text.empty()) {
+    const size_t length = sequenceLength(static_cast<unsigned char>(text.front()));
+    if (length == 0 || length > text.size() || !isEdgePunctuation(decodeAt(text, 0, length))) break;
+    text.remove_prefix(length);
+    ++leadingCodepoints;
+  }
+  while (!text.empty()) {
+    size_t start = text.size() - 1;
+    while (start > 0 && (static_cast<unsigned char>(text[start]) & 0xC0u) == 0x80u) --start;
+    const size_t length = sequenceLength(static_cast<unsigned char>(text[start]));
+    if (length != text.size() - start || !isEdgePunctuation(decodeAt(text, start, length))) break;
+    text.remove_suffix(length);
+  }
+  return text;
+}
+
 uint32_t selectionFingerprint(const std::string_view text) {
   uint32_t hash = 0x811C9DC5u;
   for (const unsigned char ch : text) {
@@ -129,11 +180,16 @@ bool buildSentenceSelection(const SelectableToken* tokens, const size_t tokenCou
   }
   output[position] = '\0';
 
+  // Anchor the word itself, not punctuation layout attached to it.
   const auto& selected = tokens[selectedTokenIndex];
-  selection.anchor = {
-      spineIndex, selected.visibleCodepointOffset,
-      selected.visibleCodepointLength > 0 ? selected.visibleCodepointLength : utf8CodepointCount(selected.text),
-      selectionFingerprint(selected.text)};
+  uint16_t leading = 0;
+  std::string_view bareWord = trimEdgePunctuation(selected.text, leading);
+  if (bareWord.empty()) {
+    bareWord = selected.text;
+    leading = 0;
+  }
+  selection.anchor = {spineIndex, selected.visibleCodepointOffset + leading, utf8CodepointCount(bareWord),
+                      selectionFingerprint(bareWord)};
   selection.firstTokenIndex = static_cast<uint16_t>(first);
   selection.lastTokenIndex = static_cast<uint16_t>(last);
   selection.selectedSentenceCodepoint = static_cast<uint16_t>(selectedCodepoint);

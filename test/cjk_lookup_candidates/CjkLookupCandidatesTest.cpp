@@ -1,7 +1,10 @@
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <array>
 #include <cstring>
+#include <string>
+#include <vector>
 
 #include "chinesepoint/cjk/CjkLookupCandidates.h"
 
@@ -78,6 +81,51 @@ TEST(CjkLookupCandidates, BoundsTheResultWithoutDiscardingTheLongestPhrase) {
 
   ASSERT_EQ(count, 1u);
   EXPECT_STREQ(candidate[0].text, "他喜欢读书");
+}
+
+std::vector<std::string> candidateTexts(const SelectableToken* tokens, size_t count, size_t selected) {
+  std::array<LookupCandidate, ChinesePoint::Cjk::kMaxLookupCandidates> candidates{};
+  const size_t found =
+      ChinesePoint::Cjk::buildCjkLookupCandidates(tokens, count, selected, candidates.data(), candidates.size());
+  std::vector<std::string> texts;
+  for (size_t index = 0; index < found; ++index) texts.emplace_back(candidates[index].text);
+  return texts;
+}
+
+TEST(CjkLookupCandidates, TrailingPunctuationDoesNotHideTheWordBeforeIt) {
+  // Layout attaches punctuation to the preceding Hanzi: 举头望明月，
+  for (const char* ending : {"月，", "月。", "月。”", "月」"}) {
+    const std::array<SelectableToken, 5> tokens = {
+        {{"举", 0, 1, false}, {"头", 1, 1, true}, {"望", 2, 1, true}, {"明", 3, 1, true}, {ending, 4, 2, true}}};
+    SCOPED_TRACE(ending);
+    // Tapping 明: 明月 is reachable; the run still includes the start of the line.
+    const auto fromMing = candidateTexts(tokens.data(), tokens.size(), 3);
+    EXPECT_NE(std::find(fromMing.begin(), fromMing.end(), "明月"), fromMing.end());
+    EXPECT_EQ(fromMing.front(), "举头望明月");
+    // Tapping the punctuated token: the bare 月 and 明月 are both tried, longest first.
+    const auto fromYue = candidateTexts(tokens.data(), tokens.size(), 4);
+    EXPECT_NE(std::find(fromYue.begin(), fromYue.end(), "明月"), fromYue.end());
+    EXPECT_EQ(fromYue.back(), "月");
+  }
+}
+
+TEST(CjkLookupCandidates, LeadingPunctuationStartsThePhrase) {
+  const std::array<SelectableToken, 3> tokens = {{{"说：", 0, 2, false}, {"“明", 2, 2, true}, {"月", 4, 1, true}}};
+  EXPECT_EQ(candidateTexts(tokens.data(), tokens.size(), 2), (std::vector<std::string>{"明月"}));
+  EXPECT_EQ(candidateTexts(tokens.data(), tokens.size(), 1), (std::vector<std::string>{"明月", "明"}));
+}
+
+TEST(CjkLookupCandidates, PhrasesStopAtAttachedPunctuation) {
+  // 床前明月光，疑是地上霜。 tokenised with punctuation attached.
+  const std::array<SelectableToken, 4> tokens = {
+      {{"月", 0, 1, false}, {"光，", 1, 2, true}, {"疑", 3, 1, true}, {"是", 4, 1, true}}};
+  EXPECT_EQ(candidateTexts(tokens.data(), tokens.size(), 2), (std::vector<std::string>{"疑是"}));
+  EXPECT_EQ(candidateTexts(tokens.data(), tokens.size(), 1), (std::vector<std::string>{"月光", "光"}));
+}
+
+TEST(CjkLookupCandidates, PunctuationOnlyTokensHaveNoCandidates) {
+  const std::array<SelectableToken, 2> tokens = {{{"月", 0, 1, false}, {"。”", 1, 2, true}}};
+  EXPECT_TRUE(candidateTexts(tokens.data(), tokens.size(), 1).empty());
 }
 
 }  // namespace

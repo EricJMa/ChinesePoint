@@ -110,6 +110,26 @@ TEST(CjkSentenceSelection, LabelEndingInColonStaysOutOfTheNextBlock) {
   EXPECT_EQ(selection.completeness, SentenceCompleteness::Complete);
 }
 
+TEST(CjkSentenceSelection, SentenceKeepsPunctuationButAnchorIsTheWord) {
+  const std::array<SelectableToken, 3> tokens = {
+      {{"“明", 20, 2, false, true}, {"月，", 22, 2, true, false}, {"光。”", 24, 3, true, false}}};
+  std::array<char, 64> sentence{};
+  SentenceSelection selection;
+
+  ASSERT_TRUE(ChinesePoint::Cjk::buildSentenceSelection(tokens.data(), tokens.size(), 0, 0, true, true, sentence.data(),
+                                                        sentence.size(), selection));
+  EXPECT_STREQ(sentence.data(), "“明月，光。”");
+  EXPECT_EQ(selection.anchor.visibleCodepointOffset, 21u);  // past the opening quote
+  EXPECT_EQ(selection.anchor.codepointLength, 1u);
+  EXPECT_EQ(selection.anchor.fingerprint, ChinesePoint::Cjk::selectionFingerprint("明"));
+
+  ASSERT_TRUE(ChinesePoint::Cjk::buildSentenceSelection(tokens.data(), tokens.size(), 1, 0, true, true, sentence.data(),
+                                                        sentence.size(), selection));
+  EXPECT_EQ(selection.anchor.visibleCodepointOffset, 22u);
+  EXPECT_EQ(selection.anchor.codepointLength, 1u);
+  EXPECT_EQ(selection.anchor.fingerprint, ChinesePoint::Cjk::selectionFingerprint("月"));
+}
+
 TEST(CjkSentenceSelection, PageStartingMidParagraphStaysTruncated) {
   const std::array<SelectableToken, 2> tokens = {{{"接上页", 0, 3, false, false}, {"的句子。", 3, 4, true, false}}};
   std::array<char, 64> sentence{};

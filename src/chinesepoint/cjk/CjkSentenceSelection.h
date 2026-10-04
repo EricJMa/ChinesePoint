@@ -42,6 +42,9 @@ uint32_t followingWordOffset(uint32_t wordOffset, std::string_view word, bool ne
 // Colons are excluded: a block ending in "：" is usually a heading or label introducing the next.
 bool continuesSentence(std::string_view token);
 uint16_t utf8CodepointCount(std::string_view text);
+// `text` without the punctuation layout attaches to its edges (e.g. "月，" or
+// "「明"); `leadingCodepoints` receives how many codepoints were dropped in front.
+std::string_view trimEdgePunctuation(std::string_view text, uint16_t& leadingCodepoints);
 uint32_t selectionFingerprint(std::string_view text);
 
 // Builds the sentence around `selectedTokenIndex` into caller-owned storage.
