@@ -419,6 +419,7 @@ DictLocation Dictionary::locate(LookupSession& session, const char* target, std:
         result.extraSize[result.extraCount] = readBe32(suffix + 4);
         ++result.extraCount;
       } else {
+        result.moreEntries = true;
         break;
       }
       continue;
@@ -508,7 +509,11 @@ DictLocation Dictionary::locateSynonym(LookupSession& session, const char* targe
   return result;
 }
 
-bool Dictionary::readDefinition(const DictLocation& location, std::string& out, LookupResult* outResult) {
+bool Dictionary::readDefinition(const DictLocation& location, std::string& out, LookupResult* outResult,
+                                DefinitionGaps* gapsOut) {
+  DefinitionGaps gaps;
+  gaps.omitted = location.moreEntries;
+  if (gapsOut) *gapsOut = gaps;
   if (!location.found) {
     if (outResult) *outResult = LookupResult::NotFound;
     return false;
@@ -522,6 +527,7 @@ bool Dictionary::readDefinition(const DictLocation& location, std::string& out, 
         ESP.getMaxAllocHeap() < out.size() + separatorBytes + size + DEFINITION_HEAP_HEADROOM_BYTES) {
       LOG_DBG("DICT", "Definition capped after %u of %u entries", static_cast<unsigned>(index + 1),
               static_cast<unsigned>(location.extraCount + 1));
+      gaps.omitted = true;
       break;
     }
     std::string entry;
@@ -529,10 +535,14 @@ bool Dictionary::readDefinition(const DictLocation& location, std::string& out, 
     if (!readEntry(location.extraOffset[index], size, entry, &entryResult)) {
       LOG_ERR("DICT", "Entry %u of %u unreadable (%d); showing the rest", static_cast<unsigned>(index + 2),
               static_cast<unsigned>(location.extraCount + 1), static_cast<int>(entryResult));
+      gaps.unreadable = true;
+      // Entries after an unreadable one are not attempted.
+      gaps.omitted = gaps.omitted || index + 1 < location.extraCount;
       break;
     }
     out.append(separator).append(entry);
   }
+  if (gapsOut) *gapsOut = gaps;
   return true;
 }
 
@@ -690,7 +700,8 @@ bool Dictionary::findHeadwords(const char* const* words, const size_t count, boo
 }
 
 bool Dictionary::lookup(const char* word, std::string& definitionOut, std::string& matchedHeadwordOut,
-                        LookupResult* outResult) {
+                        LookupResult* outResult, DefinitionGaps* gapsOut) {
+  if (gapsOut) *gapsOut = {};
   const auto setResult = [outResult](LookupResult r) {
     if (outResult) *outResult = r;
   };
@@ -742,7 +753,7 @@ bool Dictionary::lookup(const char* word, std::string& definitionOut, std::strin
 
   // Found in the index — propagate the precise failure reason from readDefinition
   // (decompression / low memory / read error) so the caller can name it.
-  if (readDefinition(location, definitionOut, outResult)) {
+  if (readDefinition(location, definitionOut, outResult, gapsOut)) {
     setResult(LookupResult::Found);
     return true;
   }

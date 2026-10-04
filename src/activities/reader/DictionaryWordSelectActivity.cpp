@@ -232,6 +232,7 @@ void DictionaryWordSelectActivity::performLookup() {
   std::string definition;
   std::string headword;
   Dictionary::LookupResult result = Dictionary::LookupResult::NotFound;
+  Dictionary::DefinitionGaps gaps;
 
   // EPUBs expose Chinese text as one-Hanzi tokens, and a full dictionary has
   // an entry for almost every single Hanzi. Looking up the tapped token first
@@ -259,13 +260,13 @@ void DictionaryWordSelectActivity::performLookup() {
       for (size_t index = 0; index < candidateCount; ++index) {
         if (hits[index]) matches.emplace_back(queries[index]);
       }
-      if (!matches.empty()) cjkFound = dict.lookup(matches.front().c_str(), definition, headword, &result);
+      if (!matches.empty()) cjkFound = dict.lookup(matches.front().c_str(), definition, headword, &result, &gaps);
     }
   } else {
-    cjkFound = ok && dict.lookup(words[selected].text, definition, headword, &result);
+    cjkFound = ok && dict.lookup(words[selected].text, definition, headword, &result, &gaps);
   }
 #else
-  const bool cjkFound = ok && dict.lookup(words[selected].text, definition, headword, &result);
+  const bool cjkFound = ok && dict.lookup(words[selected].text, definition, headword, &result, &gaps);
 #endif
 
   if (cjkFound) {
@@ -277,6 +278,7 @@ void DictionaryWordSelectActivity::performLookup() {
         std::move(learnerContext), true
 #endif
     );
+    definitionActivity->setDefinitionGaps(gaps);
 #if defined(CHINESEPOINT)
     // This activity, and so `dict`, stays alive beneath the definition viewer.
     if (!matches.empty()) definitionActivity->setMatches(&dict, std::move(matches));

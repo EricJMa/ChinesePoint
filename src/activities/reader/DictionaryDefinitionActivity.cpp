@@ -62,8 +62,14 @@ void DictionaryDefinitionActivity::layoutDefinition() {
   // C-string font APIs below both see the whole definition.
   std::replace(definition.begin(), definition.end(), '\0', '\n');
 #if defined(CHINESEPOINT)
-  captureLearnerAnswer();
+  captureLearnerAnswer();  // before the notice below, which is not part of the answer
 #endif
+  const auto appendNotice = [this](const char* notice) {
+    definition.append(htmlDefinition ? "<hr><p><i>" : "\n\n").append(notice);
+    if (htmlDefinition) definition.append("</i></p>");
+  };
+  if (definitionGaps.unreadable) appendNotice(tr(STR_DICT_ENTRIES_UNREADABLE));
+  if (definitionGaps.omitted) appendNotice(tr(STR_DICT_ENTRIES_OMITTED));
   if (!(htmlDefinition && definition.size() <= MAX_STYLED_HTML_BYTES && layoutHtmlPages())) {
     definition = htmlToPlainText(definition);
     wrapText();
@@ -101,13 +107,15 @@ bool DictionaryDefinitionActivity::switchMatch(const int step) {
   std::string nextDefinition;
   std::string nextHeadword;
   Dictionary::LookupResult result = Dictionary::LookupResult::NotFound;
-  if (!matchDictionary->lookup(matches[next].c_str(), nextDefinition, nextHeadword, &result)) {
+  Dictionary::DefinitionGaps nextGaps;
+  if (!matchDictionary->lookup(matches[next].c_str(), nextDefinition, nextHeadword, &result, &nextGaps)) {
     LOG_ERR("DDA", "Match lookup failed (%d): %s", static_cast<int>(result), matches[next].c_str());
     return false;
   }
   matchIndex = next;
   headword = std::move(nextHeadword);
   definition = std::move(nextDefinition);
+  definitionGaps = nextGaps;
   layoutDefinition();
   learnerSaved = (savedMatches >> matchIndex) & 1u;
   learnerSaveAttempted = learnerSaved;

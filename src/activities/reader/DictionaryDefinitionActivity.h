@@ -13,8 +13,7 @@
 #include "chinesepoint/cjk/CjkLearnerModel.h"
 #endif
 #include "util/ButtonNavigator.h"
-
-class Dictionary;
+#include "util/Dictionary.h"
 
 // Paged viewer for one dictionary definition. HTML definitions are laid out
 // through the EPUB chapter parser into styled Pages; anything else (plain
@@ -59,6 +58,10 @@ class DictionaryDefinitionActivity final : public Activity {
   void setMatches(Dictionary* dictionary, std::vector<std::string> matchTexts);
 #endif
 
+  // What the definition leaves out; shown after it so a partial entry group
+  // is never presented as complete.
+  void setDefinitionGaps(const Dictionary::DefinitionGaps& gaps) { definitionGaps = gaps; }
+
   void onEnter() override;
   void onExit() override;
   void loop() override;
@@ -98,6 +101,7 @@ class DictionaryDefinitionActivity final : public Activity {
   // separators) to newlines so C-string APIs see the whole text.
   std::string definition;
   const bool htmlDefinition;
+  Dictionary::DefinitionGaps definitionGaps;
 #if defined(CHINESEPOINT)
   const std::optional<LearnerSaveContext> learnerContext;
   const bool definitionIsLearnerAnswer;

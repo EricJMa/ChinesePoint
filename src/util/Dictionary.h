@@ -14,6 +14,7 @@ struct DictLocation {
   uint32_t offset = 0;  // byte offset in .dict data (first entry)
   uint32_t size = 0;    // byte length in .dict data (first entry)
   uint8_t extraCount = 0;
+  bool moreEntries = false;  // the group has more than MAX_ENTRIES entries
   uint32_t extraOffset[MAX_ENTRIES - 1] = {};
   uint32_t extraSize[MAX_ENTRIES - 1] = {};
   bool found = false;
@@ -87,8 +88,15 @@ class Dictionary {
   // stored in the index. Returns true on a hit. *outResult (if provided)
   // reports the precise outcome so the UI can distinguish a genuine miss from a
   // decompression / low-memory / read failure.
+  // What a found definition leaves out, so the UI can say so rather than
+  // present a partial entry group as complete.
+  struct DefinitionGaps {
+    bool omitted = false;     // entries dropped by MAX_ENTRIES or MAX_DEFINITION_BYTES
+    bool unreadable = false;  // a later entry could not be read
+  };
+
   bool lookup(const char* word, std::string& definitionOut, std::string& matchedHeadwordOut,
-              LookupResult* outResult = nullptr);
+              LookupResult* outResult = nullptr, DefinitionGaps* gapsOut = nullptr);
 
   // Marks which of `words` are headwords (or dictionary-authored synonyms)
   // using one set of open handles and without reading any definition, so a
@@ -188,8 +196,10 @@ class Dictionary {
   // Read every entry at location into one definition, joined by a rule, within
   // MAX_DEFINITION_BYTES. On failure returns false and, if outResult is given,
   // sets it to the specific reason (Decompress / LowMemory / ReadError). A
-  // failed later entry ends the definition early instead of discarding it.
-  bool readDefinition(const DictLocation& location, std::string& out, LookupResult* outResult = nullptr);
+  // failed later entry ends the definition early instead of discarding it;
+  // gapsOut records what was left out.
+  bool readDefinition(const DictLocation& location, std::string& out, LookupResult* outResult = nullptr,
+                      DefinitionGaps* gapsOut = nullptr);
   bool readEntry(uint32_t offset, uint32_t size, std::string& out, LookupResult* outResult);
   static void stemVariants(const std::string& word, std::vector<std::string>& out);
 
