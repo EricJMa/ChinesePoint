@@ -14,6 +14,8 @@
 #endif
 #include "util/ButtonNavigator.h"
 
+class Dictionary;
+
 // Paged viewer for one dictionary definition. HTML definitions are laid out
 // through the EPUB chapter parser into styled Pages; anything else (plain
 // text, or HTML too damaged to parse) is word-wrapped once on entry and each
@@ -31,7 +33,8 @@ class DictionaryDefinitionActivity final : public Activity {
   explicit DictionaryDefinitionActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, std::string headword,
                                         std::string definition, bool htmlDefinition = false
 #if defined(CHINESEPOINT)
-                                        , std::optional<LearnerSaveContext> learnerContext = std::nullopt,
+                                        ,
+                                        std::optional<LearnerSaveContext> learnerContext = std::nullopt,
                                         bool definitionIsLearnerAnswer = false
 #endif
                                         )
@@ -40,10 +43,21 @@ class DictionaryDefinitionActivity final : public Activity {
         definition(std::move(definition)),
         htmlDefinition(htmlDefinition)
 #if defined(CHINESEPOINT)
-        , learnerContext(std::move(learnerContext)),
+        ,
+        learnerContext(std::move(learnerContext)),
         definitionIsLearnerAnswer(definitionIsLearnerAnswer)
 #endif
-        {}
+  {
+  }
+
+#if defined(CHINESEPOINT)
+  // Makes this a CJK match chooser: `matchTexts` are the dictionary hits for
+  // one tap, best first, and the constructor's headword/definition is the
+  // first. Side Up/Down (or a header tap) switches match, doing nothing for a
+  // single match; front Left/Right turns definition pages. `dictionary` must
+  // outlive this activity.
+  void setMatches(Dictionary* dictionary, std::vector<std::string> matchTexts);
+#endif
 
   void onEnter() override;
   void onExit() override;
@@ -65,6 +79,9 @@ class DictionaryDefinitionActivity final : public Activity {
   };
 
   BodyArea bodyArea() const;
+  int headerTop() const;
+  void layoutDefinition();
+  void changePage(int step);
   bool layoutHtmlPages();
   void wrapText();
   int measureSpan(int fontId, const char* text, size_t len) const;
@@ -72,9 +89,11 @@ class DictionaryDefinitionActivity final : public Activity {
 #if defined(CHINESEPOINT)
   void saveLearnerEntry();
   void captureLearnerAnswer();
+  bool switchMatch(int step);
+  void loopMatchChooser();
 #endif
 
-  const std::string headword;
+  std::string headword;
   // Not const: onEnter() normalizes embedded NULs (StarDict multi-type
   // separators) to newlines so C-string APIs see the whole text.
   std::string definition;
@@ -85,6 +104,10 @@ class DictionaryDefinitionActivity final : public Activity {
   std::string learnerAnswer;
   bool learnerSaveAttempted = false;
   bool learnerSaved = false;
+  Dictionary* matchDictionary = nullptr;
+  std::vector<std::string> matches;
+  size_t matchIndex = 0;
+  uint64_t savedMatches = 0;  // bit i: matches[i] was saved (at most kMaxLookupCandidates)
 #endif
   // Styled path: reader-identical Pages laid out from the HTML definition.
   // Empty means the plain-text span path below is active.

@@ -3,6 +3,7 @@
 #include <FontCacheManager.h>
 #include <GfxRenderer.h>
 #include <I18n.h>
+#include <Logging.h>
 
 #include <algorithm>
 #include <cstdint>
@@ -16,6 +17,7 @@
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "util/DictHtmlPages.h"
+#include "util/Dictionary.h"
 #include "util/HtmlToPlainText.h"
 
 namespace {
@@ -47,6 +49,15 @@ void truncateUtf8(std::string& value, const size_t maximum) {
 
 void DictionaryDefinitionActivity::onEnter() {
   Activity::onEnter();
+  layoutDefinition();
+  requestUpdate();
+}
+
+void DictionaryDefinitionActivity::layoutDefinition() {
+  pages.clear();
+  lines.clear();
+  currentPage = 0;
+  totalPages = 1;
   // Normalize StarDict multi-type separators so the wrap loop and the
   // C-string font APIs below both see the whole definition.
   std::replace(definition.begin(), definition.end(), '\0', '\n');
@@ -57,10 +68,82 @@ void DictionaryDefinitionActivity::onEnter() {
     definition = htmlToPlainText(definition);
     wrapText();
   }
+}
+
+void DictionaryDefinitionActivity::changePage(const int step) {
+  const int next = currentPage + step;
+  if (next < 0 || next >= totalPages) return;
+  currentPage = next;
   requestUpdate();
 }
 
+int DictionaryDefinitionActivity::headerTop() const {
+  const auto& metrics = UITheme::getInstance().getMetrics();
+  const bool isInverted = renderer.getOrientation() == GfxRenderer::Orientation::PortraitInverted;
+  return (isInverted ? metrics.buttonHintsHeight : 0) + metrics.topPadding;
+}
+
 #if defined(CHINESEPOINT)
+void DictionaryDefinitionActivity::setMatches(Dictionary* const dictionary, std::vector<std::string> matchTexts) {
+  matchDictionary = dictionary;
+  matches = std::move(matchTexts);
+  matchIndex = 0;
+  savedMatches = 0;
+}
+
+// Replaces the shown definition with the next/previous match. The new
+// definition is read before the old pages are released, so a failed read
+// leaves the current match on screen.
+bool DictionaryDefinitionActivity::switchMatch(const int step) {
+  if (matchDictionary == nullptr || matches.size() < 2) return false;
+  const size_t count = matches.size();
+  const size_t next = static_cast<size_t>(static_cast<int>(matchIndex + count) + step) % count;
+  std::string nextDefinition;
+  std::string nextHeadword;
+  Dictionary::LookupResult result = Dictionary::LookupResult::NotFound;
+  if (!matchDictionary->lookup(matches[next].c_str(), nextDefinition, nextHeadword, &result)) {
+    LOG_ERR("DDA", "Match lookup failed (%d): %s", static_cast<int>(result), matches[next].c_str());
+    return false;
+  }
+  matchIndex = next;
+  headword = std::move(nextHeadword);
+  definition = std::move(nextDefinition);
+  layoutDefinition();
+  learnerSaved = (savedMatches >> matchIndex) & 1u;
+  learnerSaveAttempted = learnerSaved;
+  return true;
+}
+
+// Match chooser input: each press does one thing. Side Up/Down and header
+// taps switch match; front Left/Right and body taps turn definition pages.
+void DictionaryDefinitionActivity::loopMatchChooser() {
+  int tx = 0;
+  int ty = 0;
+  if (mappedInput.wasScreenTapped(tx, ty)) {
+    const auto& metrics = UITheme::getInstance().getMetrics();
+    const int top = headerTop();
+    if (ty >= top && ty < top + metrics.headerHeight) {
+      if (switchMatch(1)) requestUpdate();
+    } else {
+      changePage(tx < renderer.getScreenWidth() / 3 ? -1 : 1);
+    }
+    return;
+  }
+  // Same axis flip as NavNext/NavPrevious, so the rotated hint labels still match.
+  const bool swapped = mappedInput.isNavDirectionSwapped();
+  using Button = MappedInputManager::Button;
+  if (mappedInput.wasPressed(swapped ? Button::Up : Button::Down)) {
+    if (switchMatch(1)) requestUpdate();
+    return;
+  }
+  if (mappedInput.wasPressed(swapped ? Button::Down : Button::Up)) {
+    if (switchMatch(-1)) requestUpdate();
+    return;
+  }
+  buttonNavigator.onPressAndContinuous({swapped ? Button::Left : Button::Right}, [this] { changePage(1); });
+  buttonNavigator.onPressAndContinuous({swapped ? Button::Right : Button::Left}, [this] { changePage(-1); });
+}
+
 void DictionaryDefinitionActivity::captureLearnerAnswer() {
   // Only a successful local dictionary lookup may become a card answer. UI
   // messages such as “dictionary not found” are useful to display but would
@@ -232,10 +315,13 @@ void DictionaryDefinitionActivity::loop() {
   }
 
 #if defined(CHINESEPOINT)
-  if (learnerContext.has_value() && !learnerSaved &&
-      mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
+  if (learnerContext.has_value() && !learnerSaved && mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
     saveLearnerEntry();
     requestUpdate();
+    return;
+  }
+  if (matchDictionary != nullptr) {
+    loopMatchChooser();
     return;
   }
 #endif
@@ -276,10 +362,11 @@ void DictionaryDefinitionActivity::loop() {
 void DictionaryDefinitionActivity::saveLearnerEntry() {
   learnerSaveAttempted = true;
   if (!learnerContext.has_value() || !ChinesePoint::CjkSafetyGuard::startLearnerSession()) return;
-  learnerSaved = ChinesePoint::Cjk::learnerStore().recordSaved(
-      headword, learnerContext->sentence, learnerContext->bookPath, learnerContext->anchor,
-      learnerAnswer, static_cast<int64_t>(millis()));
+  learnerSaved = ChinesePoint::Cjk::learnerStore().recordSaved(headword, learnerContext->sentence,
+                                                               learnerContext->bookPath, learnerContext->anchor,
+                                                               learnerAnswer, static_cast<int64_t>(millis()));
   ChinesePoint::CjkSafetyGuard::finishLearnerSession();
+  if (learnerSaved && matchIndex < 64) savedMatches |= uint64_t{1} << matchIndex;
 }
 
 #endif
@@ -322,6 +409,15 @@ void DictionaryDefinitionActivity::render(RenderLock&&) {
   // Header: matched headword left, page counter right.
   const int headerY = contentY + metrics.topPadding + 10;
   renderer.drawText(UI_12_FONT_ID, contentX + SIDE_PADDING, headerY, headword.c_str(), true, EpdFontFamily::BOLD);
+#if defined(CHINESEPOINT)
+  if (matches.size() > 1) {
+    char matchCounter[24];
+    snprintf(matchCounter, sizeof(matchCounter), " \xC2\xB7 %u/%u", static_cast<unsigned>(matchIndex + 1),
+             static_cast<unsigned>(matches.size()));
+    const int headwordWidth = renderer.getTextWidth(UI_12_FONT_ID, headword.c_str(), EpdFontFamily::BOLD);
+    renderer.drawText(UI_12_FONT_ID, contentX + SIDE_PADDING + headwordWidth, headerY, matchCounter);
+  }
+#endif
   if (totalPages > 1) {
     char counter[16];
     snprintf(counter, sizeof(counter), "%d/%d", currentPage + 1, totalPages);
@@ -348,14 +444,13 @@ void DictionaryDefinitionActivity::render(RenderLock&&) {
   scope.endScanAndPrewarm();
   drawBody(fontId, contentX + SIDE_PADDING, bodyStartY);
 
-  const auto labels = mappedInput.mapLabels(
-      tr(STR_BACK),
+  const auto labels = mappedInput.mapLabels(tr(STR_BACK),
 #if defined(CHINESEPOINT)
-      learnerContext.has_value() && !learnerSaved ? "Save" : "",
+                                            learnerContext.has_value() && !learnerSaved ? "Save" : "",
 #else
-      "",
+                                            "",
 #endif
-      (currentPage > 0 ? "<" : ""), (currentPage + 1 < totalPages ? ">" : ""));
+                                            (currentPage > 0 ? "<" : ""), (currentPage + 1 < totalPages ? ">" : ""));
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
   renderer.displayBuffer();
 }

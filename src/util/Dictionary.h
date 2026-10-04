@@ -84,6 +84,12 @@ class Dictionary {
   bool lookup(const char* word, std::string& definitionOut, std::string& matchedHeadwordOut,
               LookupResult* outResult = nullptr);
 
+  // Marks which of `words` are headwords (or dictionary-authored synonyms)
+  // using one set of open handles and without reading any definition, so a
+  // caller can rank several candidates cheaply. Stem variants are not tried.
+  // False when the index could not be searched; `found` is then incomplete.
+  bool findHeadwords(const char* const* words, size_t count, bool* found);
+
   static std::string cleanWord(const char* word);
 
   static constexpr uint32_t MAX_DEFINITION_BYTES = 64 * 1024;

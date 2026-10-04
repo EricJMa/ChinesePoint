@@ -627,6 +627,22 @@ void Dictionary::stemVariants(const std::string& word, std::vector<std::string>&
   }
 }
 
+bool Dictionary::findHeadwords(const char* const* words, const size_t count, bool* const found) {
+  for (size_t index = 0; index < count; ++index) found[index] = false;
+  if (!isOpen()) return false;
+  LookupSession session;
+  if (!openSession(session)) return false;
+  for (size_t index = 0; index < count; ++index) {
+    const std::string cleaned = cleanWord(words[index]);
+    if (cleaned.empty()) continue;
+    DictLocation location = locate(session, cleaned.c_str(), nullptr);
+    if (!location.found && !location.readError && hasSyn) location = locateSynonym(session, cleaned.c_str(), nullptr);
+    if (location.readError) return false;
+    found[index] = location.found;
+  }
+  return true;
+}
+
 bool Dictionary::lookup(const char* word, std::string& definitionOut, std::string& matchedHeadwordOut,
                         LookupResult* outResult) {
   const auto setResult = [outResult](LookupResult r) {

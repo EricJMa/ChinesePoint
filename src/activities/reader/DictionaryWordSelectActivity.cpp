@@ -6,6 +6,7 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 
+#include <algorithm>
 #include <cctype>
 #include <climits>
 #include <cstdlib>
@@ -243,27 +244,44 @@ void DictionaryWordSelectActivity::performLookup() {
                                          learnerTokens.data(), learnerTokens.size(), static_cast<size_t>(selected),
                                          lookupCandidates.data(), lookupCandidates.size())
                                    : 0;
+  // Every candidate the dictionary has becomes a selectable match, in the same
+  // order; only the first one's definition is read now.
+  std::vector<std::string> matches;
   bool cjkFound = false;
-  for (size_t index = 0; index < candidateCount; ++index) {
-    cjkFound = dict.lookup(lookupCandidates[index].text, definition, headword, &result);
-    if (cjkFound || result != Dictionary::LookupResult::NotFound) break;
+  if (candidateCount > 0) {
+    std::array<const char*, ChinesePoint::Cjk::kMaxLookupCandidates> queries{};
+    std::array<bool, ChinesePoint::Cjk::kMaxLookupCandidates> hits{};
+    for (size_t index = 0; index < candidateCount; ++index) queries[index] = lookupCandidates[index].text;
+    if (!dict.findHeadwords(queries.data(), candidateCount, hits.data())) {
+      result = Dictionary::LookupResult::ReadError;
+    } else {
+      matches.reserve(static_cast<size_t>(std::count(hits.begin(), hits.begin() + candidateCount, true)));
+      for (size_t index = 0; index < candidateCount; ++index) {
+        if (hits[index]) matches.emplace_back(queries[index]);
+      }
+      if (!matches.empty()) cjkFound = dict.lookup(matches.front().c_str(), definition, headword, &result);
+    }
+  } else {
+    cjkFound = ok && dict.lookup(words[selected].text, definition, headword, &result);
   }
-  if (candidateCount == 0) cjkFound = ok && dict.lookup(words[selected].text, definition, headword, &result);
 #else
   const bool cjkFound = ok && dict.lookup(words[selected].text, definition, headword, &result);
 #endif
 
   if (cjkFound) {
     popup = Popup::None;
-    startActivityForResult(
-        std::make_unique<DictionaryDefinitionActivity>(renderer, mappedInput, std::move(headword),
-                                                       std::move(definition), dict.definitionsAreHtml()
+    auto definitionActivity = std::make_unique<DictionaryDefinitionActivity>(
+        renderer, mappedInput, std::move(headword), std::move(definition), dict.definitionsAreHtml()
 #if defined(CHINESEPOINT)
-                                                                                  ,
-                                                       std::move(learnerContext), true
+                                                                               ,
+        std::move(learnerContext), true
 #endif
-                                                       ),
-        [this](const ActivityResult&) { requestUpdate(); });
+    );
+#if defined(CHINESEPOINT)
+    // This activity, and so `dict`, stays alive beneath the definition viewer.
+    if (!matches.empty()) definitionActivity->setMatches(&dict, std::move(matches));
+#endif
+    startActivityForResult(std::move(definitionActivity), [this](const ActivityResult&) { requestUpdate(); });
     return;
   }
 #if defined(CHINESEPOINT)
