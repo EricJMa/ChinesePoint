@@ -8,8 +8,14 @@
 
 // Result of an index search — file location of a definition without reading it.
 struct DictLocation {
-  uint32_t offset = 0;  // byte offset in .dict data
-  uint32_t size = 0;    // byte length in .dict data
+  // StarDict allows repeated headwords (CC-CEDICT keeps each reading of a
+  // Hanzi as its own entry), so a hit carries the whole group, in index order.
+  static constexpr uint8_t MAX_ENTRIES = 8;
+  uint32_t offset = 0;  // byte offset in .dict data (first entry)
+  uint32_t size = 0;    // byte length in .dict data (first entry)
+  uint8_t extraCount = 0;
+  uint32_t extraOffset[MAX_ENTRIES - 1] = {};
+  uint32_t extraSize[MAX_ENTRIES - 1] = {};
   bool found = false;
   // Set when the search was cut short by an .idx open or seek failure rather than
   // reaching a verdict, so a failed search isn't reported as a genuine miss.
@@ -179,9 +185,12 @@ class Dictionary {
   // buildIndex() so each sidecar is rebuilt only when actually stale.
   static bool sidecarIsStale(const std::string& sourcePath, const std::string& sidecarPath, uint32_t magic);
 
-  // Read the definition at location. On failure returns false and, if outResult
-  // is given, sets it to the specific reason (Decompress / LowMemory / ReadError).
+  // Read every entry at location into one definition, joined by a rule, within
+  // MAX_DEFINITION_BYTES. On failure returns false and, if outResult is given,
+  // sets it to the specific reason (Decompress / LowMemory / ReadError). A
+  // failed later entry ends the definition early instead of discarding it.
   bool readDefinition(const DictLocation& location, std::string& out, LookupResult* outResult = nullptr);
+  bool readEntry(uint32_t offset, uint32_t size, std::string& out, LookupResult* outResult);
   static void stemVariants(const std::string& word, std::vector<std::string>& out);
 
   // Read a null-terminated word from an open file into buf (max bufSize-1
