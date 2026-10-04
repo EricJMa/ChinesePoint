@@ -116,15 +116,17 @@ size_t buildCjkLookupCandidates(const SelectableToken* const tokens, const size_
   const TokenCore selected = coreOf(tokens[selectedTokenIndex].text);
   if (!selected.cjk) return 0;
 
-  // Punctuation bounds the run: it may sit at the run's outer edges only.
+  // Punctuation and block starts bound the run: punctuation may sit at the
+  // run's outer edges only, and a phrase never spans two paragraphs.
   size_t runStart = selectedTokenIndex;
-  while (runStart > 0 && !coreOf(tokens[runStart].text).punctuationBefore) {
+  while (runStart > 0 && !tokens[runStart].startsBlock && !coreOf(tokens[runStart].text).punctuationBefore) {
     const TokenCore previous = coreOf(tokens[runStart - 1].text);
     if (!previous.cjk || previous.punctuationAfter) break;
     --runStart;
   }
   size_t runEnd = selectedTokenIndex;
   while (runEnd + 1 < tokenCount && !coreOf(tokens[runEnd].text).punctuationAfter) {
+    if (tokens[runEnd + 1].startsBlock) break;
     const TokenCore next = coreOf(tokens[runEnd + 1].text);
     if (!next.cjk || next.punctuationBefore) break;
     ++runEnd;

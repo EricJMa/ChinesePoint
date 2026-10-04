@@ -123,6 +123,14 @@ TEST(CjkLookupCandidates, PhrasesStopAtAttachedPunctuation) {
   EXPECT_EQ(candidateTexts(tokens.data(), tokens.size(), 1), (std::vector<std::string>{"月光", "光"}));
 }
 
+TEST(CjkLookupCandidates, PhrasesNeverSpanTwoParagraphs) {
+  // <p>…明</p><p>月，…</p>: the paragraph ends with 明 and the next starts with 月，
+  const std::array<SelectableToken, 4> tokens = {
+      {{"望", 0, 1, false, true}, {"明", 1, 1, true, false}, {"月，", 2, 2, true, true}, {"光", 4, 1, true, false}}};
+  EXPECT_EQ(candidateTexts(tokens.data(), tokens.size(), 1), (std::vector<std::string>{"望明"}));
+  EXPECT_EQ(candidateTexts(tokens.data(), tokens.size(), 2), (std::vector<std::string>{"月"}));
+}
+
 TEST(CjkLookupCandidates, PunctuationOnlyTokensHaveNoCandidates) {
   const std::array<SelectableToken, 2> tokens = {{{"月", 0, 1, false}, {"。”", 1, 2, true}}};
   EXPECT_TRUE(candidateTexts(tokens.data(), tokens.size(), 1).empty());

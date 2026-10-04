@@ -25,7 +25,7 @@ struct LookupCandidate {
 
 // Builds distinct, longest-first contiguous CJK phrases around the selected
 // token. Punctuation attached to a token's edge ("月，") is dropped from the
-// query and ends the phrase there. The selected token alone is emitted only
+// query and ends the phrase there; so does a block start. The selected token alone is emitted only
 // when that trimming changed it, because the caller always tries the normal
 // StarDict lookup of the displayed token first. Malformed UTF-8, Latin text
 // or an overlong phrase is never emitted.
